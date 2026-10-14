@@ -1,4 +1,3 @@
-import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -10,7 +9,7 @@ from app.schemas.chat import ChatMessage, OllamaChatResponse, OllamaModel
 from app.services.web_scraper import WebScrapeError, web_scraper
 from app.services.web_search import WebSearchError, web_search_service
 
-MAX_WEB_CONTEXT_CHARACTERS = 24_000
+MAX_WEB_CONTEXT_CHARACTERS = 8_000
 
 
 class OllamaConnectionError(Exception):
@@ -173,17 +172,6 @@ class OllamaService:
             if use_web_search
             else []
         )
-        enriched_search_pages: dict[str, object] = {}
-        if search_results:
-            outcomes = await asyncio.gather(
-                *(web_scraper.scrape(result.url) for result in search_results[:3]),
-                return_exceptions=True,
-            )
-            enriched_search_pages = {
-                result.url: outcome
-                for result, outcome in zip(search_results[:3], outcomes, strict=True)
-                if not isinstance(outcome, Exception)
-            }
         ollama_messages = [message.model_dump() for message in messages]
         if not pages and not search_results:
             return ollama_messages
@@ -204,9 +192,7 @@ class OllamaService:
             available = remaining - len(header)
             if available <= 0:
                 break
-            enriched_page = enriched_search_pages.get(result.url)
-            enriched_text = getattr(enriched_page, "text", result.content)
-            source = header + enriched_text[:available]
+            source = header + result.content[:available]
             source_parts.append(source)
             remaining -= len(source)
         sources = "\n\n".join(source_parts)
