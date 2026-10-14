@@ -83,6 +83,17 @@ The setup command uses Ubuntu's package manager for PostgreSQL and Ollama's
 official Linux installer. It may request `sudo` access while installing or
 starting system services.
 
+On another device connected to the same private network, open:
+
+```text
+http://UBUNTU_SERVER_IP:5173
+```
+
+Find the Ubuntu server's address with `hostname -I`. Do not use `localhost`
+from another computer because that refers to the computer running the browser.
+If Ubuntu's firewall is enabled, allow private-network access to the frontend
+port with `sudo ufw allow 5173/tcp`.
+
 The frontend development server forwards `/api` requests to FastAPI at `http://localhost:8000`.
 
 ## Useful checks
@@ -103,3 +114,7 @@ infrastructure/ Local and production service configuration
 docs/           Project documentation
 ```
 
+node --version
+npm --version
+curl -I http://127.0.0.1:5173
+ss -ltnp | grep 5173
