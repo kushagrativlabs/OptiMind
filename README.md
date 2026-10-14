@@ -37,12 +37,19 @@ OptiMind is a local-first AI colleague for managing and improving WordPress webs
 
 6. Open <http://localhost:5173>.
 
+After the initial setup, start PostgreSQL, Ollama, the API, and the frontend with:
+
+```sh
+npm start
+```
+
 ### Setup commands
 
 Run individual setup steps when needed:
 
 ```sh
 npm run ollama:setup     # Install/start Ollama and pull the configured model
+npm run db:create        # Create the configured PostgreSQL user and database
 npm run db:migrate       # Apply migrations and create/update PostgreSQL tables
 npm run db:status        # Show the currently applied migration
 npm run check            # Run lint, frontend build, and backend tests
@@ -52,6 +59,12 @@ Set `OLLAMA_MODEL` before `npm run ollama:setup` to install a different default 
 
 `DATABASE_URL` is required at runtime and must be provided in the root `.env`.
 Database credentials are not hardcoded in the Python or Alembic configuration.
+
+Add the application database credentials to `.env` as `POSTGRES_USER` and
+`POSTGRES_PASSWORD`. For local Homebrew PostgreSQL, `POSTGRES_ADMIN_USER` can
+usually remain empty. For a protected or remote server, also set the PostgreSQL
+administrator username and password so `npm run db:create` can create the role
+and database.
 
 The frontend development server forwards `/api` requests to FastAPI at `http://localhost:8000`.
 
