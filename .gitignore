@@ -13,3 +13,6 @@ frontend/.vite/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
+# The global Git configuration ignores index.html; Vite requires this entry file.
+!frontend/index.html
+
