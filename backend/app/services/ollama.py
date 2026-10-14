@@ -1,3 +1,6 @@
+import json
+from collections.abc import AsyncIterator
+
 import httpx
 
 from app.core.config import settings
@@ -87,3 +90,50 @@ class OllamaService:
             message=ChatMessage(role="assistant", content=content),
             model=model,
         )
+
+    async def validate_model(self, requested_model: str | None = None) -> str:
+        model = requested_model or self.model
+        installed_models = {item.name for item in await self.models()}
+        if model not in installed_models:
+            raise OllamaModelError(f"Model {model} is not installed in Ollama.")
+        return model
+
+    async def chat_stream(
+        self,
+        messages: list[ChatMessage],
+        requested_model: str | None = None,
+    ) -> AsyncIterator[str]:
+        model = requested_model or self.model
+        payload = {
+            "model": model,
+            "messages": [message.model_dump() for message in messages],
+            "stream": True,
+        }
+        timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=10.0)
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST", f"{self.base_url}/api/chat", json=payload
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        item = json.loads(line)
+                        content = item.get("message", {}).get("content", "")
+                        if content:
+                            yield content
+                        if item.get("done"):
+                            break
+        except httpx.ConnectError as exc:
+            raise OllamaConnectionError(
+                "Ollama is offline. Start Ollama and try again."
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            detail = "Ollama rejected the request"
+            if exc.response.status_code == 404:
+                detail = f"Model {model} is not installed. Run: ollama pull {model}"
+            raise OllamaConnectionError(detail) from exc
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            raise OllamaConnectionError("Ollama did not complete the request.") from exc

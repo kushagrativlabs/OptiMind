@@ -7,7 +7,7 @@ import {
   getModels,
   getSystemStatus,
   OllamaModel,
-  sendChat,
+  streamChat,
   ServiceState,
   SystemStatus,
 } from './services/api'
@@ -36,6 +36,7 @@ function App() {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -142,15 +143,32 @@ function App() {
     setDraft('')
     setError(null)
     setIsSending(true)
+    setIsStreaming(false)
 
     try {
-      const response = await sendChat(
+      await streamChat(
         nextMessages.slice(1),
         selectedModel,
         conversationId,
+        {
+          onConversation: (nextConversationId) => {
+            setConversationId(nextConversationId)
+          },
+          onToken: (chunk) => {
+            setIsStreaming(true)
+            setMessages((current) => {
+              const lastMessage = current.at(-1)
+              if (lastMessage?.role === 'assistant') {
+                return [
+                  ...current.slice(0, -1),
+                  { ...lastMessage, content: lastMessage.content + chunk },
+                ]
+              }
+              return [...current, { role: 'assistant', content: chunk }]
+            })
+          },
+        },
       )
-      setConversationId(response.conversation_id)
-      setMessages((current) => [...current, response.message])
       await refreshConversations()
     } catch (requestError) {
       setError(
@@ -161,6 +179,7 @@ function App() {
       await refreshStatus()
     } finally {
       setIsSending(false)
+      setIsStreaming(false)
     }
   }
 
@@ -271,7 +290,7 @@ function App() {
                 </div>
               </article>
             ))}
-            {isSending && (
+            {isSending && !isStreaming && (
               <article className="message assistant">
                 <div className="avatar">O</div>
                 <div>

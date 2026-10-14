@@ -71,3 +71,65 @@ export const sendChat = (
   },
   )
 
+type ChatStreamEvent =
+  | { type: 'meta'; conversation_id: string; model: string }
+  | { type: 'token'; content: string }
+  | { type: 'done' }
+  | { type: 'error'; detail: string }
+
+type ChatStreamHandlers = {
+  onConversation: (conversationId: string, model: string) => void
+  onToken: (content: string) => void
+}
+
+export const streamChat = async (
+  messages: ChatMessage[],
+  model: string,
+  conversationId: string | null,
+  handlers: ChatStreamHandlers,
+) => {
+  const response = await fetch('/api/v1/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      model,
+      conversation_id: conversationId,
+    }),
+  })
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | { detail?: string }
+      | null
+    throw new Error(body?.detail ?? `Request failed (${response.status})`)
+  }
+  if (!response.body) throw new Error('The browser could not read the response stream.')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const processLine = (line: string) => {
+    if (!line.trim()) return
+    const event = JSON.parse(line) as ChatStreamEvent
+    if (event.type === 'meta') {
+      handlers.onConversation(event.conversation_id, event.model)
+    } else if (event.type === 'token') {
+      handlers.onToken(event.content)
+    } else if (event.type === 'error') {
+      throw new Error(event.detail)
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value, { stream: !done })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    lines.forEach(processLine)
+    if (done) break
+  }
+  processLine(buffer)
+}
+
