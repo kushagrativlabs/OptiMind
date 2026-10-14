@@ -49,6 +49,7 @@ Run individual setup steps when needed:
 
 ```sh
 npm run ollama:setup     # Install/start Ollama and pull the configured model
+npm run postgres:setup   # Install/start PostgreSQL on macOS or Ubuntu
 npm run db:create        # Create the configured PostgreSQL user and database
 npm run db:migrate       # Apply migrations and create/update PostgreSQL tables
 npm run db:status        # Show the currently applied migration
@@ -65,6 +66,22 @@ Add the application database credentials to `.env` as `POSTGRES_USER` and
 usually remain empty. For a protected or remote server, also set the PostgreSQL
 administrator username and password so `npm run db:create` can create the role
 and database.
+
+### Ubuntu first-time setup
+
+On Ubuntu 24.04 or newer, install Git, curl, Python, and its virtual-environment
+package first. Install Node.js 22 with your preferred Node version manager.
+Then clone the repository and run:
+
+```sh
+cp .env.example .env
+npm run setup
+npm start
+```
+
+The setup command uses Ubuntu's package manager for PostgreSQL and Ollama's
+official Linux installer. It may request `sudo` access while installing or
+starting system services.
 
 The frontend development server forwards `/api` requests to FastAPI at `http://localhost:8000`.
 

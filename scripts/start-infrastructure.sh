@@ -25,13 +25,19 @@ if [[ -z "${pg_isready_bin}" ]]; then
 fi
 
 if ! "${pg_isready_bin}" --host "${db_host}" --port "${db_port}" >/dev/null 2>&1; then
-  if command -v brew >/dev/null 2>&1 && brew list postgresql@17 >/dev/null 2>&1; then
-    echo "Starting PostgreSQL..."
-    brew services start postgresql@17
-  else
-    echo "PostgreSQL is not running. Start it and run npm start again."
-    exit 1
-  fi
+  echo "Starting PostgreSQL..."
+  case "$(uname -s)" in
+    Darwin)
+      brew services start postgresql@17
+      ;;
+    Linux)
+      sudo systemctl start postgresql
+      ;;
+    *)
+      echo "PostgreSQL is not running. Start it and run npm start again."
+      exit 1
+      ;;
+  esac
 
   for _ in {1..20}; do
     if "${pg_isready_bin}" --host "${db_host}" --port "${db_port}" >/dev/null 2>&1; then

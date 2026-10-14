@@ -20,7 +20,7 @@ app_user="${POSTGRES_USER:?POSTGRES_USER is required in .env}"
 app_password="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in .env}"
 db_host="${POSTGRES_HOST:-localhost}"
 db_port="${POSTGRES_PORT:-5432}"
-admin_user="${POSTGRES_ADMIN_USER:-$(id -un)}"
+admin_user="${POSTGRES_ADMIN_USER:-}"
 admin_password="${POSTGRES_ADMIN_PASSWORD:-}"
 
 psql_bin="$(command -v psql || true)"
@@ -34,11 +34,20 @@ if [[ -z "${psql_bin}" ]]; then
 fi
 
 echo "Creating PostgreSQL role and database when missing..."
-PGPASSWORD="${admin_password}" "${psql_bin}" \
-  --host "${db_host}" \
-  --port "${db_port}" \
-  --username "${admin_user}" \
-  --dbname postgres \
+if [[ "$(uname -s)" == "Linux" && -z "${admin_user}" && -z "${admin_password}" ]]; then
+  psql_command=(sudo -u postgres "${psql_bin}" --dbname postgres)
+else
+  admin_user="${admin_user:-$(id -un)}"
+  psql_command=(
+    "${psql_bin}"
+    --host "${db_host}"
+    --port "${db_port}"
+    --username "${admin_user}"
+    --dbname postgres
+  )
+fi
+
+PGPASSWORD="${admin_password}" "${psql_command[@]}" \
   --set ON_ERROR_STOP=1 \
   --set app_db="${app_db}" \
   --set app_user="${app_user}" \

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Local-first AI workspace for website growth",
   "scripts": {
-    "setup": "npm run install:frontend && npm run install:backend && npm run ollama:setup && npm run db:create && npm run db:migrate",
+    "setup": "npm run install:frontend && npm run install:backend && npm run postgres:setup && npm run ollama:setup && npm run db:create && npm run db:migrate",
     "start": "bash scripts/start-all.sh",
     "services:start": "npm start",
     "install:frontend": "npm install --prefix frontend",
@@ -12,6 +12,7 @@
     "ollama:setup": "bash scripts/setup-ollama.sh",
     "ollama:start": "ollama serve",
     "ollama:models": "ollama list",
+    "postgres:setup": "bash scripts/setup-postgres.sh",
     "db:create": "bash scripts/create-database.sh",
     "db:migrate": "cd backend && .venv/bin/alembic upgrade head",
     "db:status": "cd backend && .venv/bin/alembic current",
