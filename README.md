@@ -96,6 +96,32 @@ port with `sudo ufw allow 5173/tcp`.
 
 The frontend development server forwards `/api` requests to FastAPI at `http://localhost:8000`.
 
+### Webpage summaries and questions
+
+Paste a public URL or a domain such as `sample.com` into a conversation. OptiMind
+downloads the readable page text and, for a homepage, follows up to eight internal
+same-domain pages across two link levels. It asks the selected Ollama model to
+summarize the collected content and uses it as reference context for follow-up
+questions in the same conversation.
+Private-network and localhost URLs are blocked, downloads are size-limited, and
+page content is treated as untrusted reference data rather than instructions.
+
+### Current web search for SEO, AEO, and GEO
+
+OptiMind uses a private SearXNG container to research current search results and
+pass them to either a local or cloud Ollama model with source URLs. No account,
+API key, subscription, or per-search payment is required. Enable it in `.env`:
+
+```env
+WEB_SEARCH_ENABLED=true
+SEARXNG_BASE_URL=http://localhost:8080
+```
+
+Install/start the local search service with `npm run web-search:setup`, restart
+OptiMind, and enable **Web search** beside the model selector. Search-result
+content is treated as untrusted reference data, and the model is instructed to
+cite its sources. SearXNG is bound to localhost and is not exposed to the network.
+
 ## Useful checks
 
 ```sh
