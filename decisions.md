@@ -109,8 +109,14 @@ Checked on October 14, 2026:
 ### D-014 — Backend database stack
 
 - **Status:** Accepted
-- **Decision:** Use SQLAlchemy 2 with the async PostgreSQL driver. Add Alembic when the first persistent model is introduced.
+- **Decision:** Use SQLAlchemy 2 with the async PostgreSQL driver and Alembic migrations for all persistent schema changes.
 - **Reason:** This provides async compatibility with FastAPI without adding migration scaffolding before a schema exists.
+
+### D-019 — Persist conversation history in PostgreSQL
+
+- **Status:** Accepted
+- **Decision:** Store conversation metadata and messages in PostgreSQL and load them through versioned API endpoints.
+- **Reason:** Chat history must survive browser refreshes and application restarts instead of depending on browser memory.
 
 ### D-015 — Frontend styling and component system
 

@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import {
   ChatMessage,
+  ConversationSummary,
+  getConversation,
+  getConversations,
   getModels,
   getSystemStatus,
   OllamaModel,
@@ -29,6 +32,8 @@ function App() {
     () => localStorage.getItem('optimind-model') ?? 'qwen2.5:3b',
   )
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage])
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +44,14 @@ function App() {
       setStatus(await getSystemStatus())
     } catch {
       setStatus(null)
+    }
+  }
+
+  const refreshConversations = async () => {
+    try {
+      setConversations(await getConversations())
+    } catch {
+      setConversations([])
     }
   }
 
@@ -71,12 +84,53 @@ function App() {
   }, [])
 
   useEffect(() => {
+    let active = true
+
+    getConversations()
+      .then((savedConversations) => {
+        if (active) setConversations(savedConversations)
+      })
+      .catch(() => {
+        if (active) setConversations([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
     localStorage.setItem('optimind-model', selectedModel)
   }, [selectedModel])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const startConversation = () => {
+    setConversationId(null)
+    setMessages([initialMessage])
+    setDraft('')
+    setError(null)
+  }
+
+  const openConversation = async (id: string) => {
+    if (isSending) return
+    setError(null)
+
+    try {
+      const conversation = await getConversation(id)
+      setConversationId(conversation.id)
+      setSelectedModel(conversation.model)
+      setMessages([initialMessage, ...conversation.messages])
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Could not load that conversation.',
+      )
+    }
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -90,8 +144,14 @@ function App() {
     setIsSending(true)
 
     try {
-      const response = await sendChat(nextMessages.slice(1), selectedModel)
+      const response = await sendChat(
+        nextMessages.slice(1),
+        selectedModel,
+        conversationId,
+      )
+      setConversationId(response.conversation_id)
       setMessages((current) => [...current, response.message])
+      await refreshConversations()
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -119,7 +179,7 @@ function App() {
           </div>
         </div>
 
-        <button className="new-chat" onClick={() => setMessages([initialMessage])}>
+        <button className="new-chat" onClick={startConversation}>
           <span>＋</span> New conversation
         </button>
 
@@ -135,6 +195,28 @@ function App() {
             <span>⌁</span> Audits <small>Phase 4</small>
           </a>
         </nav>
+
+        <section className="history" aria-label="Conversation history">
+          <p className="nav-label">History</p>
+          {conversations.length === 0 ? (
+            <p className="history-empty">No saved conversations yet</p>
+          ) : (
+            <div className="history-list">
+              {conversations.map((conversation) => (
+                <button
+                  className={`history-item ${conversation.id === conversationId ? 'active' : ''}`}
+                  disabled={isSending}
+                  key={conversation.id}
+                  onClick={() => void openConversation(conversation.id)}
+                  title={conversation.title}
+                >
+                  <span>{conversation.title}</span>
+                  <small>{conversation.model}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div className="sidebar-footer">
           <p className="nav-label">Local services</p>

@@ -19,4 +19,3 @@ def test_chat_request_accepts_model_selection() -> None:
     )
 
     assert request.model == "qwen2.5:3b"
-

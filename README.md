@@ -13,14 +13,17 @@ OptiMind is a local-first AI colleague for managing and improving WordPress webs
 
 1. Copy `.env.example` to `.env`.
 2. Start PostgreSQL with `docker compose -f infrastructure/compose.yaml up -d` or provide your own `DATABASE_URL`.
-3. Start Ollama and download the model with `ollama pull qwen2.5:3b`.
-4. Set up and run the backend:
+3. Install dependencies, ensure Ollama and Qwen are ready, and create/update the database tables:
+
+   ```sh
+   npm run setup
+   ```
+
+4. Run the backend:
 
    ```sh
    cd backend
-   python3 -m venv .venv
    source .venv/bin/activate
-   pip install -e '.[dev]'
    uvicorn app.main:app --reload
    ```
 
@@ -33,6 +36,22 @@ OptiMind is a local-first AI colleague for managing and improving WordPress webs
    ```
 
 6. Open <http://localhost:5173>.
+
+### Setup commands
+
+Run individual setup steps when needed:
+
+```sh
+npm run ollama:setup     # Install/start Ollama and pull the configured model
+npm run db:migrate       # Apply migrations and create/update PostgreSQL tables
+npm run db:status        # Show the currently applied migration
+npm run check            # Run lint, frontend build, and backend tests
+```
+
+Set `OLLAMA_MODEL` before `npm run ollama:setup` to install a different default model.
+
+`DATABASE_URL` is required at runtime and must be provided in the root `.env`.
+Database credentials are not hardcoded in the Python or Alembic configuration.
 
 The frontend development server forwards `/api` requests to FastAPI at `http://localhost:8000`.
 

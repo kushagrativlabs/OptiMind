@@ -21,4 +21,3 @@ async def status() -> dict[str, object]:
         "database": database,
         "ollama": {**ollama, "model": settings.ollama_model},
     }
-

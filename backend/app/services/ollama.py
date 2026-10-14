@@ -1,7 +1,7 @@
 import httpx
 
 from app.core.config import settings
-from app.schemas.chat import ChatMessage, ChatResponse, OllamaModel
+from app.schemas.chat import ChatMessage, OllamaChatResponse, OllamaModel
 
 
 class OllamaConnectionError(Exception):
@@ -55,7 +55,7 @@ class OllamaService:
         self,
         messages: list[ChatMessage],
         requested_model: str | None = None,
-    ) -> ChatResponse:
+    ) -> OllamaChatResponse:
         model = requested_model or self.model
         installed_models = {item.name for item in await self.models()}
         if model not in installed_models:
@@ -71,9 +71,7 @@ class OllamaService:
                 response = await client.post(f"{self.base_url}/api/chat", json=payload)
                 response.raise_for_status()
         except httpx.ConnectError as exc:
-            raise OllamaConnectionError(
-                "Ollama is offline. Start Ollama and try again."
-            ) from exc
+            raise OllamaConnectionError("Ollama is offline. Start Ollama and try again.") from exc
         except httpx.HTTPStatusError as exc:
             detail = "Ollama rejected the request"
             if exc.response.status_code == 404:
@@ -85,8 +83,7 @@ class OllamaService:
         content = response.json().get("message", {}).get("content")
         if not content:
             raise OllamaConnectionError("Ollama returned an empty response.")
-        return ChatResponse(
+        return OllamaChatResponse(
             message=ChatMessage(role="assistant", content=content),
             model=model,
         )
-

@@ -1,0 +1,27 @@
+{
+  "name": "optimind",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first AI workspace for website growth",
+  "scripts": {
+    "setup": "npm run install:frontend && npm run install:backend && npm run ollama:setup && npm run db:migrate",
+    "install:frontend": "npm install --prefix frontend",
+    "install:backend": "python3 -m venv backend/.venv && backend/.venv/bin/python -m pip install -e 'backend[dev]'",
+    "ollama:setup": "bash scripts/setup-ollama.sh",
+    "ollama:start": "ollama serve",
+    "ollama:models": "ollama list",
+    "db:migrate": "cd backend && .venv/bin/alembic upgrade head",
+    "db:status": "cd backend && .venv/bin/alembic current",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "cd backend && .venv/bin/uvicorn app.main:app --reload",
+    "build": "npm run build --prefix frontend",
+    "test": "cd backend && .venv/bin/pytest",
+    "lint": "npm run lint --prefix frontend && cd backend && .venv/bin/ruff check .",
+    "check": "npm run lint && npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  }
+}
+
