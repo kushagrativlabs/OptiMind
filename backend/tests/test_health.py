@@ -19,3 +19,12 @@ def test_chat_request_accepts_model_selection() -> None:
     )
 
     assert request.model == "qwen2.5:3b"
+
+
+def test_chat_request_accepts_web_search() -> None:
+    request = ChatRequest(
+        messages=[{"role": "user", "content": "What changed today?"}],
+        web_search=True,
+    )
+
+    assert request.web_search is True

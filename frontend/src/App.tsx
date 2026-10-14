@@ -25,7 +25,37 @@ const StatusPill = ({ label, service }: { label: string; service?: ServiceState 
   </div>
 )
 
+const MessageText = ({ content }: { content: string }) => {
+  const pattern = /(\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s]+)/g
+  return (
+    <p>
+      {content.split(pattern).map((part, index) => {
+        const markdownLink = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
+        const plainUrl = part.match(/^https?:\/\/[^\s]+$/)
+        if (markdownLink) {
+          return (
+            <a href={markdownLink[2]} key={`${markdownLink[2]}-${index}`} rel="noreferrer" target="_blank">
+              {markdownLink[1]}
+            </a>
+          )
+        }
+        if (plainUrl) {
+          return (
+            <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">
+              {part}
+            </a>
+          )
+        }
+        return part
+      })}
+    </p>
+  )
+}
+
 function App() {
+  const [webSearchPreference] = useState(
+    () => localStorage.getItem('optimind-web-search'),
+  )
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [models, setModels] = useState<OllamaModel[]>([])
   const [selectedModel, setSelectedModel] = useState(
@@ -37,6 +67,9 @@ function App() {
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [webSearch, setWebSearch] = useState(
+    () => webSearchPreference === 'true',
+  )
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -65,6 +98,11 @@ function App() {
 
         setStatus(nextStatus)
         setModels(availableModels)
+        if (nextStatus.web_search.status !== 'online') {
+          setWebSearch(false)
+        } else if (webSearchPreference === null) {
+          setWebSearch(nextStatus.web_search.status === 'online')
+        }
         setSelectedModel((current) => {
           const isAvailable = availableModels.some((model) => model.name === current)
           if (isAvailable) return current
@@ -82,7 +120,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [webSearchPreference])
 
   useEffect(() => {
     let active = true
@@ -103,6 +141,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('optimind-model', selectedModel)
   }, [selectedModel])
+
+  useEffect(() => {
+    localStorage.setItem('optimind-web-search', String(webSearch))
+  }, [webSearch])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -150,6 +192,7 @@ function App() {
         nextMessages.slice(1),
         selectedModel,
         conversationId,
+        webSearch,
         {
           onConversation: (nextConversationId) => {
             setConversationId(nextConversationId)
@@ -242,6 +285,7 @@ function App() {
           <StatusPill label="API" service={status?.api} />
           <StatusPill label="PostgreSQL" service={status?.database} />
           <StatusPill label="Ollama" service={status?.ollama} />
+          <StatusPill label="Web Search" service={status?.web_search} />
           <button className="refresh-button" onClick={() => void refreshStatus()}>
             Refresh connections
           </button>
@@ -254,27 +298,42 @@ function App() {
             <p className="eyebrow">PRIVATE WORKSPACE</p>
             <h1>Website growth assistant</h1>
           </div>
-          <label className="model-picker">
-            <span className={`status-dot ${status?.ollama.status ?? 'checking'}`} />
-            <span className="model-label">Model</span>
-            <select
-              aria-label="AI model"
-              disabled={models.length === 0 || isSending}
-              onChange={(event) => setSelectedModel(event.target.value)}
-              value={selectedModel}
+          <div className="topbar-actions">
+            <label
+              className={`web-search-toggle ${webSearch ? 'active' : ''}`}
+              title={status?.web_search.detail ?? 'Checking web search'}
             >
-              {models.length === 0 ? (
-                <option value={selectedModel}>{selectedModel}</option>
-              ) : (
-                models.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name}
-                  </option>
-                ))
-              )}
-            </select>
-            <span className="select-chevron" aria-hidden="true">⌄</span>
-          </label>
+              <input
+                checked={webSearch}
+                disabled={status?.web_search.status !== 'online' || isSending}
+                onChange={(event) => setWebSearch(event.target.checked)}
+                type="checkbox"
+              />
+              <span className={`status-dot ${status?.web_search.status ?? 'checking'}`} />
+              <span>Web search</span>
+            </label>
+            <label className="model-picker">
+              <span className={`status-dot ${status?.ollama.status ?? 'checking'}`} />
+              <span className="model-label">Model</span>
+              <select
+                aria-label="AI model"
+                disabled={models.length === 0 || isSending}
+                onChange={(event) => setSelectedModel(event.target.value)}
+                value={selectedModel}
+              >
+                {models.length === 0 ? (
+                  <option value={selectedModel}>{selectedModel}</option>
+                ) : (
+                  models.map((model) => (
+                    <option key={model.name} value={model.name}>
+                      {model.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <span className="select-chevron" aria-hidden="true">⌄</span>
+            </label>
+          </div>
         </header>
 
         <section className="conversation" aria-live="polite">
@@ -286,7 +345,7 @@ function App() {
                   <p className="message-author">
                     {message.role === 'assistant' ? 'OptiMind' : 'You'}
                   </p>
-                  <p>{message.content}</p>
+                  <MessageText content={message.content} />
                 </div>
               </article>
             ))}
@@ -328,7 +387,7 @@ function App() {
               </button>
             </form>
             <p className="composer-note">
-              Local-first · No website changes can be made in Phase 1
+              {webSearch ? 'Web search on · Current sources will be cited' : 'Local-first · Web search off'}
             </p>
           </div>
         </section>

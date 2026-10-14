@@ -7,6 +7,7 @@ export type SystemStatus = {
   api: ServiceState
   database: ServiceState
   ollama: ServiceState & { model: string }
+  web_search: ServiceState
 }
 
 export type ChatMessage = {
@@ -58,6 +59,7 @@ export const sendChat = (
   messages: ChatMessage[],
   model: string,
   conversationId: string | null,
+  webSearch = false,
 ) =>
   request<{ message: ChatMessage; model: string; conversation_id: string }>(
     '/api/v1/chat', {
@@ -67,6 +69,7 @@ export const sendChat = (
       messages,
       model,
       conversation_id: conversationId,
+      web_search: webSearch,
     }),
   },
   )
@@ -86,6 +89,7 @@ export const streamChat = async (
   messages: ChatMessage[],
   model: string,
   conversationId: string | null,
+  webSearch: boolean,
   handlers: ChatStreamHandlers,
 ) => {
   const response = await fetch('/api/v1/chat/stream', {
@@ -95,6 +99,7 @@ export const streamChat = async (
       messages,
       model,
       conversation_id: conversationId,
+      web_search: webSearch,
     }),
   })
 

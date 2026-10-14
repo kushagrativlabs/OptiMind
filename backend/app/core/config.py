@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     database_url: str
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
+    web_search_enabled: bool = False
+    searxng_base_url: str = "http://localhost:8080"
     frontend_origin: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(

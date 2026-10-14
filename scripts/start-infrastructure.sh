@@ -75,5 +75,18 @@ if ! ollama list >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "PostgreSQL and Ollama are ready."
+web_search_enabled="${WEB_SEARCH_ENABLED:-false}"
+if [[ "${web_search_enabled}" == "true" || "${web_search_enabled}" == "TRUE" || "${web_search_enabled}" == "1" ]]; then
+  searxng_url="${SEARXNG_BASE_URL:-http://localhost:8080}"
+  if ! curl -fsS "${searxng_url}/" >/dev/null 2>&1; then
+    echo "Starting the free local SearXNG service..."
+    bash "${project_root}/scripts/setup-searxng.sh"
+  fi
+  if ! curl -fsS "${searxng_url}/" >/dev/null 2>&1; then
+    echo "SearXNG did not become ready."
+    exit 1
+  fi
+fi
+
+echo "PostgreSQL, Ollama, and configured search services are ready."
 
