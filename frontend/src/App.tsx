@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import {
   ChatMessage,
   ConversationSummary,
+  deleteConversation,
   getConversation,
   getConversations,
   getModels,
@@ -66,6 +67,7 @@ function App() {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [webSearch, setWebSearch] = useState(
     () => webSearchPreference === 'true',
@@ -175,6 +177,29 @@ function App() {
     }
   }
 
+  const removeConversation = async (conversation: ConversationSummary) => {
+    if (isSending || deletingConversationId) return
+    if (!window.confirm(`Delete “${conversation.title}”? This cannot be undone.`)) return
+
+    setDeletingConversationId(conversation.id)
+    setError(null)
+    try {
+      await deleteConversation(conversation.id)
+      setConversations((current) =>
+        current.filter((item) => item.id !== conversation.id),
+      )
+      if (conversation.id === conversationId) startConversation()
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Could not delete that conversation.',
+      )
+    } finally {
+      setDeletingConversationId(null)
+    }
+  }
+
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     const content = draft.trim()
@@ -265,16 +290,29 @@ function App() {
           ) : (
             <div className="history-list">
               {conversations.map((conversation) => (
-                <button
+                <div
                   className={`history-item ${conversation.id === conversationId ? 'active' : ''}`}
-                  disabled={isSending}
                   key={conversation.id}
-                  onClick={() => void openConversation(conversation.id)}
-                  title={conversation.title}
                 >
-                  <span>{conversation.title}</span>
-                  <small>{conversation.model}</small>
-                </button>
+                  <button
+                    className="history-open"
+                    disabled={isSending || deletingConversationId === conversation.id}
+                    onClick={() => void openConversation(conversation.id)}
+                    title={conversation.title}
+                  >
+                    <span>{conversation.title}</span>
+                    <small>{conversation.model}</small>
+                  </button>
+                  <button
+                    aria-label={`Delete ${conversation.title}`}
+                    className="history-delete"
+                    disabled={isSending || deletingConversationId !== null}
+                    onClick={() => void removeConversation(conversation)}
+                    title="Delete conversation"
+                  >
+                    {deletingConversationId === conversation.id ? '…' : '×'}
+                  </button>
+                </div>
               ))}
             </div>
           )}

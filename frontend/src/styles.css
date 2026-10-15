@@ -149,14 +149,12 @@ button {
 }
 
 .history-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   margin: 2px 0;
-  padding: 9px 11px;
   color: #aebdb5;
-  text-align: left;
   background: transparent;
-  border: 0;
   border-radius: 8px;
 }
 
@@ -166,23 +164,58 @@ button {
   background: rgba(255, 255, 255, 0.07);
 }
 
-.history-item:disabled { cursor: default; }
+.history-open {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 7px 9px 11px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
 
-.history-item span,
-.history-item small {
+.history-open:disabled,
+.history-delete:disabled { cursor: default; }
+
+.history-open span,
+.history-open small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-item span { font-size: 12px; }
+.history-open span { font-size: 12px; }
 
-.history-item small {
+.history-open small {
   margin-top: 3px;
   color: #6f8378;
   font-family: ui-monospace, monospace;
   font-size: 9px;
+}
+
+.history-delete {
+  width: 28px;
+  height: 30px;
+  flex: 0 0 28px;
+  margin-right: 4px;
+  padding: 0;
+  color: #6f8378;
+  font-size: 18px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  opacity: 0;
+}
+
+.history-item:hover .history-delete,
+.history-item.active .history-delete,
+.history-delete:focus-visible { opacity: 1; }
+
+.history-delete:hover:not(:disabled) {
+  color: #ffb0a3;
+  background: rgba(223, 112, 94, 0.14);
 }
 
 .history-empty {

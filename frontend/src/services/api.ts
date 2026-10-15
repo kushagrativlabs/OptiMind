@@ -55,6 +55,19 @@ export const getConversations = () =>
 export const getConversation = (conversationId: string) =>
   request<ConversationDetail>(`/api/v1/conversations/${conversationId}`)
 
+export const deleteConversation = async (conversationId: string) => {
+  const response = await fetch(`/api/v1/conversations/${conversationId}`, {
+    method: 'DELETE',
+  })
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | { detail?: string }
+      | null
+    throw new Error(body?.detail ?? `Request failed (${response.status})`)
+  }
+}
+
 export const sendChat = (
   messages: ChatMessage[],
   model: string,
