@@ -350,6 +350,42 @@ h1 {
   opacity: 0;
 }
 
+.toggle-track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  flex: 0 0 30px;
+  background: #aeb8b2;
+  border-radius: 999px;
+  transition: background 160ms ease;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 11px;
+  height: 11px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(17, 27, 23, 0.24);
+  transition: transform 160ms ease;
+}
+
+.web-search-toggle.active .toggle-track { background: #6e8b3d; }
+.web-search-toggle.active .toggle-thumb { transform: translateX(13px); }
+
+.web-search-toggle:focus-within {
+  outline: 3px solid rgba(121, 144, 100, 0.2);
+  outline-offset: 2px;
+}
+
+.web-search-state {
+  min-width: 18px;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
 .model-label {
   color: #87938c;
   font-size: 9px;
@@ -558,7 +594,8 @@ h1 {
   .model-picker { padding: 7px 9px; }
   .topbar-actions { gap: 6px; }
   .web-search-toggle { padding: 8px; }
-  .web-search-toggle > span:last-child { display: none; }
+  .web-search-label,
+  .web-search-toggle > .status-dot { display: none; }
   .model-label { display: none; }
   .model-picker select { max-width: 135px; }
   .messages { width: calc(100% - 30px); padding-top: 30px; }

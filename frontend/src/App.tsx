@@ -54,9 +54,6 @@ const MessageText = ({ content }: { content: string }) => {
 }
 
 function App() {
-  const [webSearchPreference] = useState(
-    () => localStorage.getItem('optimind-web-search'),
-  )
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [models, setModels] = useState<OllamaModel[]>([])
   const [selectedModel, setSelectedModel] = useState(
@@ -69,9 +66,7 @@ function App() {
   const [isSending, setIsSending] = useState(false)
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
-  const [webSearch, setWebSearch] = useState(
-    () => webSearchPreference === 'true',
-  )
+  const [webSearch, setWebSearch] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -102,8 +97,6 @@ function App() {
         setModels(availableModels)
         if (nextStatus.web_search.status !== 'online') {
           setWebSearch(false)
-        } else if (webSearchPreference === null) {
-          setWebSearch(nextStatus.web_search.status === 'online')
         }
         setSelectedModel((current) => {
           const isAvailable = availableModels.some((model) => model.name === current)
@@ -122,7 +115,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [webSearchPreference])
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -145,12 +138,8 @@ function App() {
   }, [selectedModel])
 
   useEffect(() => {
-    localStorage.setItem('optimind-web-search', String(webSearch))
-  }, [webSearch])
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    endRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' })
+  }, [messages, isStreaming])
 
   const startConversation = () => {
     setConversationId(null)
@@ -342,13 +331,19 @@ function App() {
               title={status?.web_search.detail ?? 'Checking web search'}
             >
               <input
+                aria-label="Toggle web search"
                 checked={webSearch}
                 disabled={status?.web_search.status !== 'online' || isSending}
                 onChange={(event) => setWebSearch(event.target.checked)}
+                role="switch"
                 type="checkbox"
               />
               <span className={`status-dot ${status?.web_search.status ?? 'checking'}`} />
-              <span>Web search</span>
+              <span className="web-search-label">Web search</span>
+              <span className="toggle-track" aria-hidden="true">
+                <span className="toggle-thumb" />
+              </span>
+              <strong className="web-search-state">{webSearch ? 'On' : 'Off'}</strong>
             </label>
             <label className="model-picker">
               <span className={`status-dot ${status?.ollama.status ?? 'checking'}`} />

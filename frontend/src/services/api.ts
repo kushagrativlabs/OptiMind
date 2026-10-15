@@ -127,6 +127,21 @@ export const streamChat = async (
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let tokenBuffer = ''
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+  const flushTokens = () => {
+    if (flushTimer !== null) clearTimeout(flushTimer)
+    flushTimer = null
+    if (!tokenBuffer) return
+    handlers.onToken(tokenBuffer)
+    tokenBuffer = ''
+  }
+
+  const scheduleTokenFlush = () => {
+    if (flushTimer !== null) return
+    flushTimer = setTimeout(flushTokens, 32)
+  }
 
   const processLine = (line: string) => {
     if (!line.trim()) return
@@ -134,8 +149,12 @@ export const streamChat = async (
     if (event.type === 'meta') {
       handlers.onConversation(event.conversation_id, event.model)
     } else if (event.type === 'token') {
-      handlers.onToken(event.content)
+      tokenBuffer += event.content
+      scheduleTokenFlush()
+    } else if (event.type === 'done') {
+      flushTokens()
     } else if (event.type === 'error') {
+      flushTokens()
       throw new Error(event.detail)
     }
   }
@@ -149,5 +168,6 @@ export const streamChat = async (
     if (done) break
   }
   processLine(buffer)
+  flushTokens()
 }
 
