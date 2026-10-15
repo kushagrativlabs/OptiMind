@@ -65,6 +65,7 @@ async def chat(
             conversation_id=conversation.id,
             role="user",
             content=latest_user_message.content,
+            images=[image.model_dump() for image in latest_user_message.images],
         )
     )
     await session.flush()
@@ -91,6 +92,7 @@ async def chat(
             conversation_id=conversation.id,
             role="assistant",
             content=response.message.content,
+            images=[],
         )
     )
     conversation.updated_at = datetime.now(UTC)
@@ -120,7 +122,10 @@ async def chat_stream(
         )
 
     try:
-        await service.validate_model(model)
+        await service.validate_model(
+            model,
+            require_vision=any(message.images for message in request.messages),
+        )
     except OllamaModelError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -152,6 +157,7 @@ async def chat_stream(
             conversation_id=conversation.id,
             role="user",
             content=latest_user_message.content,
+            images=[image.model_dump() for image in latest_user_message.images],
         )
     )
     await session.commit()
@@ -182,6 +188,7 @@ async def chat_stream(
                         conversation_id=conversation_id,
                         role="assistant",
                         content=content,
+                        images=[],
                     )
                 )
                 if saved_conversation is not None:

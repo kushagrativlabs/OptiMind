@@ -24,6 +24,13 @@ body {
   min-height: 100vh;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 button,
 textarea {
   font: inherit;
@@ -36,7 +43,9 @@ button {
 .app-shell {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -48,6 +57,7 @@ button {
     radial-gradient(circle at 30% 15%, rgba(71, 126, 94, 0.25), transparent 32%),
     #111b17;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
 }
 
 .brand {
@@ -277,6 +287,8 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background:
     linear-gradient(rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.62)),
     radial-gradient(circle at 80% 10%, #e6ecd7, transparent 25%),
@@ -447,12 +459,19 @@ h1 {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .messages {
+  flex: 1;
+  min-height: 0;
   width: min(820px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 56px 0 180px;
+  padding: 48px 0 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #a8b5ad transparent;
 }
 
 .message {
@@ -486,6 +505,22 @@ h1 {
 .message.user .avatar {
   color: #f4f7f5;
   background: #30463a;
+}
+
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 4px 0 12px;
+}
+
+.message-images img {
+  width: auto;
+  max-width: min(100%, 420px);
+  max-height: 280px;
+  object-fit: contain;
+  border: 1px solid #d4dbd2;
+  border-radius: 10px;
 }
 
 .message p {
@@ -598,11 +633,8 @@ h1 {
 .message a:hover { color: #284914; }
 
 .composer-wrap {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 272px;
-  padding: 38px 24px 20px;
+  flex: 0 0 auto;
+  padding: 20px 24px;
   background: linear-gradient(transparent, #f2f4ef 32%);
 }
 
@@ -616,6 +648,7 @@ h1 {
 
 .composer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 12px;
   padding: 12px 12px 12px 18px;
@@ -625,13 +658,66 @@ h1 {
   box-shadow: 0 14px 44px rgba(31, 48, 39, 0.1);
 }
 
+.attachment-tray {
+  display: flex;
+  flex: 0 0 100%;
+  gap: 9px;
+  padding: 2px 0 7px;
+}
+
+.attachment-preview {
+  position: relative;
+  width: 66px;
+  height: 52px;
+}
+
+.attachment-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid #d4dbd2;
+  border-radius: 8px;
+}
+
+.attachment-preview button {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  color: #fff;
+  font-size: 14px;
+  background: #87362c;
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+.composer .attach-button {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  justify-content: center;
+  padding: 0;
+  color: #52635a;
+  font-size: 20px;
+  background: #edf1eb;
+  border: 1px solid #d6dcd4;
+}
+
+.composer .attach-button:hover:not(:disabled) { background: #e1e8de; }
+
 .composer:focus-within {
   border-color: #99aa76;
   box-shadow: 0 14px 44px rgba(31, 48, 39, 0.12), 0 0 0 3px rgba(174, 195, 113, 0.14);
 }
 
 .composer textarea {
-  width: 100%;
+  min-width: 0;
+  flex: 1;
+  width: auto;
   min-height: 28px;
   max-height: 120px;
   padding: 5px 0;
@@ -738,6 +824,9 @@ h1 {
   border-color: #3a483f;
 }
 
+:root[data-theme='dark'] .message-images img,
+:root[data-theme='dark'] .attachment-preview img { border-color: #3a483f; }
+
 :root[data-theme='dark'] .model-picker,
 :root[data-theme='dark'] .web-search-toggle,
 :root[data-theme='dark'] .theme-toggle {
@@ -771,6 +860,13 @@ h1 {
 }
 
 :root[data-theme='dark'] .composer textarea { color: #e3ebe5; }
+:root[data-theme='dark'] .composer .attach-button {
+  color: #c7d2ca;
+  background: #29362f;
+  border-color: #3a483f;
+}
+:root[data-theme='dark'] .composer .attach-button:hover:not(:disabled) { background: #334239; }
+:root[data-theme='dark'] .attachment-preview button { border-color: #1d2822; }
 :root[data-theme='dark'] .composer textarea::placeholder { color: #78877e; }
 :root[data-theme='dark'] .composer-note { color: #77867d; }
 
@@ -806,7 +902,7 @@ h1 {
   .model-label { display: none; }
   .model-picker select { max-width: 135px; }
   .messages { width: calc(100% - 30px); padding-top: 30px; }
-  .composer-wrap { left: 0; padding-right: 14px; padding-left: 14px; }
+  .composer-wrap { padding-right: 14px; padding-left: 14px; }
   .composer button span { display: none; }
 }
 

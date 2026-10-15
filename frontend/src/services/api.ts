@@ -13,11 +13,19 @@ export type SystemStatus = {
 export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
+  images?: ChatImage[]
+}
+
+export type ChatImage = {
+  name: string
+  media_type: 'image/jpeg' | 'image/png' | 'image/webp'
+  data: string
 }
 
 export type OllamaModel = {
   name: string
   size: number
+  capabilities: string[]
 }
 
 export type ConversationSummary = {

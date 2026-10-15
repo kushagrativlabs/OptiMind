@@ -3,6 +3,7 @@
 set -euo pipefail
 
 model_name="${OLLAMA_MODEL:-qwen2.5:3b}"
+vision_model_name="${OLLAMA_VISION_MODEL:-qwen3.5:0.8b}"
 ollama_log="${TMPDIR:-/tmp}/optimind-ollama.log"
 
 if ! command -v ollama >/dev/null 2>&1; then
@@ -49,5 +50,9 @@ fi
 
 echo "Installing model ${model_name}..."
 ollama pull "${model_name}"
-echo "Ollama and ${model_name} are ready."
+if [[ "${vision_model_name}" != "${model_name}" ]]; then
+  echo "Installing lightweight vision model ${vision_model_name}..."
+  ollama pull "${vision_model_name}"
+fi
+echo "Ollama, ${model_name}, and image processing are ready."
 

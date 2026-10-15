@@ -1,3 +1,5 @@
+import base64
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -28,3 +30,23 @@ def test_chat_request_accepts_web_search() -> None:
     )
 
     assert request.web_search is True
+
+
+def test_chat_request_accepts_image_attachment() -> None:
+    request = ChatRequest(
+        messages=[
+            {
+                "role": "user",
+                "content": "Describe this image.",
+                "images": [
+                    {
+                        "name": "pixel.png",
+                        "media_type": "image/png",
+                        "data": base64.b64encode(b"small image").decode(),
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert request.messages[0].images[0].name == "pixel.png"

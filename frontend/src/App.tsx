@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   ChatMessage,
+  ChatImage,
   ConversationSummary,
   deleteConversation,
   getConversation,
@@ -27,6 +28,42 @@ const StatusPill = ({ label, service }: { label: string; service?: ServiceState 
     <span>{label}</span>
   </div>
 )
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_IMAGES = 3
+const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+const readImage = (file: File): Promise<ChatImage> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`))
+    reader.onload = () => {
+      const result = String(reader.result)
+      const data = result.split(',', 2)[1]
+      if (!data) return reject(new Error(`Could not read ${file.name}.`))
+      resolve({
+        name: file.name,
+        media_type: file.type as ChatImage['media_type'],
+        data,
+      })
+    }
+    reader.readAsDataURL(file)
+  })
+
+const MessageImages = ({ images = [] }: { images?: ChatImage[] }) => {
+  if (images.length === 0) return null
+  return (
+    <div className="message-images">
+      {images.map((image, index) => (
+        <img
+          alt={image.name}
+          key={`${image.name}-${index}`}
+          src={`data:${image.media_type};base64,${image.data}`}
+        />
+      ))}
+    </div>
+  )
+}
 
 const MessageText = ({ content }: { content: string }) => {
   return (
@@ -62,6 +99,7 @@ function App() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [attachedImages, setAttachedImages] = useState<ChatImage[]>([])
   const [isSending, setIsSending] = useState(false)
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -69,7 +107,10 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const activeRequestRef = useRef<AbortController | null>(null)
+  const selectedModelInfo = models.find((model) => model.name === selectedModel)
+  const supportsVision = selectedModelInfo?.capabilities.includes('vision') ?? false
 
   const refreshStatus = async () => {
     try {
@@ -158,6 +199,7 @@ function App() {
     setConversationId(null)
     setMessages([initialMessage])
     setDraft('')
+    setAttachedImages([])
     setError(null)
     requestAnimationFrame(() => composerRef.current?.focus())
   }
@@ -205,12 +247,16 @@ function App() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    const content = draft.trim()
+    const content = draft.trim() || (attachedImages.length > 0 ? 'Analyze the attached image.' : '')
     if (!content || isSending) return
 
-    const nextMessages = [...messages, { role: 'user' as const, content }]
+    const nextMessages = [
+      ...messages,
+      { role: 'user' as const, content, images: attachedImages },
+    ]
     setMessages(nextMessages)
     setDraft('')
+    setAttachedImages([])
     setError(null)
     setIsSending(true)
     setIsStreaming(false)
@@ -264,6 +310,39 @@ function App() {
 
   const stopGeneration = () => {
     activeRequestRef.current?.abort()
+  }
+
+  const attachImages = async (files: FileList | null) => {
+    if (!files) return
+    const availableSlots = MAX_IMAGES - attachedImages.length
+    const selectedFiles = Array.from(files).slice(0, availableSlots)
+    const invalidFile = selectedFiles.find(
+      (file) => !SUPPORTED_IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_BYTES,
+    )
+    if (invalidFile) {
+      setError('Images must be JPEG, PNG, or WebP and no larger than 5 MB each.')
+      if (imageInputRef.current) imageInputRef.current.value = ''
+      return
+    }
+
+    try {
+      const images = await Promise.all(selectedFiles.map(readImage))
+      setAttachedImages((current) => [...current, ...images].slice(0, MAX_IMAGES))
+      setError(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Could not attach the image.')
+    } finally {
+      if (imageInputRef.current) imageInputRef.current.value = ''
+      composerRef.current?.focus()
+    }
+  }
+
+  const openImagePicker = () => {
+    if (!supportsVision) {
+      setError('Select a vision-capable Ollama model before attaching an image.')
+      return
+    }
+    imageInputRef.current?.click()
   }
 
   return (
@@ -395,7 +474,7 @@ function App() {
                 ) : (
                   models.map((model) => (
                     <option key={model.name} value={model.name}>
-                      {model.name}
+                      {model.name}{model.capabilities.includes('vision') ? ' · Vision' : ''}
                     </option>
                   ))
                 )}
@@ -414,6 +493,7 @@ function App() {
                   <p className="message-author">
                     {message.role === 'assistant' ? 'OptiMind' : 'You'}
                   </p>
+                  <MessageImages images={message.images} />
                   <MessageText content={message.content} />
                 </div>
               </article>
@@ -437,6 +517,47 @@ function App() {
           <div className="composer-wrap">
             {error && <div className="error-banner">{error}</div>}
             <form className="composer" onSubmit={submit}>
+              {attachedImages.length > 0 && (
+                <div className="attachment-tray">
+                  {attachedImages.map((image, index) => (
+                    <div className="attachment-preview" key={`${image.name}-${index}`}>
+                      <img
+                        alt={image.name}
+                        src={`data:${image.media_type};base64,${image.data}`}
+                      />
+                      <button
+                        aria-label={`Remove ${image.name}`}
+                        onClick={() => setAttachedImages((current) =>
+                          current.filter((_, imageIndex) => imageIndex !== index)
+                        )}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                multiple
+                onChange={(event) => void attachImages(event.target.files)}
+                ref={imageInputRef}
+                type="file"
+              />
+              <button
+                aria-label="Attach images"
+                className="attach-button"
+                disabled={isSending || attachedImages.length >= MAX_IMAGES}
+                onClick={openImagePicker}
+                title={supportsVision
+                  ? 'Attach up to 3 images'
+                  : 'Select a vision-capable model to attach images'}
+                type="button"
+              >
+                ⌕
+              </button>
               <textarea
                 aria-label="Message OptiMind"
                 disabled={isSending}
@@ -461,13 +582,17 @@ function App() {
                   <span>Stop</span> ■
                 </button>
               ) : (
-                <button disabled={!draft.trim()} type="submit">
+                <button disabled={!draft.trim() && attachedImages.length === 0} type="submit">
                   <span>Send</span> ↑
                 </button>
               )}
             </form>
             <p className="composer-note">
-              {webSearch ? 'Web search on · Current sources will be cited' : 'Local-first · Web search off'}
+              {attachedImages.length > 0
+                ? `Image attached · ${selectedModel} is ready to process it`
+                : webSearch
+                  ? 'Web search on · Current sources will be cited'
+                  : 'Local-first · Web search off'}
             </p>
           </div>
         </section>

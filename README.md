@@ -56,7 +56,16 @@ npm run db:status        # Show the currently applied migration
 npm run check            # Run lint, frontend build, and backend tests
 ```
 
-Set `OLLAMA_MODEL` before `npm run ollama:setup` to install a different default model.
+Set `OLLAMA_MODEL` before `npm run ollama:setup` to install a different default
+text model. Set `OLLAMA_VISION_MODEL` to choose the model used for image analysis.
+
+### Image analysis
+
+Select a model marked **Vision** in the model picker, then use the image button
+beside the message box. OptiMind accepts up to three JPEG, PNG, or WebP images,
+with a maximum size of 5 MB each. Attachments are stored with the conversation
+and restored when chat history is reopened. The default lightweight vision model
+is `qwen3.5:0.8b`.
 
 `DATABASE_URL` is required at runtime and must be provided in the root `.env`.
 Database credentials are not hardcoded in the Python or Alembic configuration.

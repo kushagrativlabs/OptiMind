@@ -52,7 +52,11 @@ class OllamaService:
 
         return sorted(
             [
-                OllamaModel(name=item["name"], size=item.get("size", 0))
+                OllamaModel(
+                    name=item["name"],
+                    size=item.get("size", 0),
+                    capabilities=item.get("capabilities", []),
+                )
                 for item in response.json().get("models", [])
                 if item.get("name")
             ],
@@ -66,9 +70,10 @@ class OllamaService:
         use_web_search: bool = False,
     ) -> OllamaChatResponse:
         model = requested_model or self.model
-        installed_models = {item.name for item in await self.models()}
-        if model not in installed_models:
-            raise OllamaModelError(f"Model {model} is not installed in Ollama.")
+        await self.validate_model(
+            model,
+            require_vision=any(message.images for message in messages),
+        )
 
         try:
             payload = {
@@ -105,11 +110,20 @@ class OllamaService:
             model=model,
         )
 
-    async def validate_model(self, requested_model: str | None = None) -> str:
+    async def validate_model(
+        self,
+        requested_model: str | None = None,
+        require_vision: bool = False,
+    ) -> str:
         model = requested_model or self.model
-        installed_models = {item.name for item in await self.models()}
-        if model not in installed_models:
+        installed_models = {item.name: item for item in await self.models()}
+        model_info = installed_models.get(model)
+        if model_info is None:
             raise OllamaModelError(f"Model {model} is not installed in Ollama.")
+        if require_vision and "vision" not in model_info.capabilities:
+            raise OllamaModelError(
+                f"Model {model} cannot process images. Select a vision-capable model."
+            )
         return model
 
     async def chat_stream(
@@ -165,7 +179,7 @@ class OllamaService:
         self,
         messages: list[ChatMessage],
         use_web_search: bool = False,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, object]]:
         pages = await web_scraper.pages_from_messages(messages)
         latest_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
@@ -176,7 +190,15 @@ class OllamaService:
             if use_web_search
             else []
         )
-        ollama_messages = [message.model_dump() for message in messages]
+        ollama_messages: list[dict[str, object]] = []
+        for message in messages:
+            ollama_message: dict[str, object] = {
+                "role": message.role,
+                "content": message.content,
+            }
+            if message.images:
+                ollama_message["images"] = [image.data for image in message.images]
+            ollama_messages.append(ollama_message)
         if not pages and not search_results:
             return ollama_messages
 
