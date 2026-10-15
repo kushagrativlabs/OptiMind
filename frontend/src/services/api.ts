@@ -7,6 +7,7 @@ export type SystemStatus = {
   api: ServiceState
   database: ServiceState
   ollama: ServiceState & { model: string }
+  image_generation: ServiceState
   web_search: ServiceState
 }
 
@@ -75,6 +76,26 @@ export const deleteConversation = async (conversationId: string) => {
     throw new Error(body?.detail ?? `Request failed (${response.status})`)
   }
 }
+
+export const generateImage = (
+  prompt: string,
+  conversationModel: string,
+  conversationId: string | null,
+  signal?: AbortSignal,
+) =>
+  request<{ message: ChatMessage; model: string; conversation_id: string }>(
+    '/api/v1/images/generate',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        conversation_id: conversationId,
+        conversation_model: conversationModel,
+      }),
+      signal,
+    },
+  )
 
 export const sendChat = (
   messages: ChatMessage[],

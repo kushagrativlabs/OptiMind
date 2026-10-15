@@ -75,6 +75,28 @@ if ! ollama list >/dev/null 2>&1; then
   exit 1
 fi
 
+image_generation_enabled="${IMAGE_GENERATION_ENABLED:-false}"
+if [[ "${image_generation_enabled}" == "true" || "${image_generation_enabled}" == "TRUE" || "${image_generation_enabled}" == "1" ]]; then
+  image_generation_url="${IMAGE_GENERATION_BASE_URL:-http://localhost:1234}"
+  if ! curl -fsS "${image_generation_url}/v1/models" >/dev/null 2>&1; then
+    image_generation_log="${TMPDIR:-/tmp}/optimind-image-generation.log"
+    echo "Starting the local image generator..."
+    nohup bash "${project_root}/scripts/start-image-generation.sh" >"${image_generation_log}" 2>&1 &
+  fi
+
+  for _ in {1..60}; do
+    if curl -fsS "${image_generation_url}/v1/models" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  if ! curl -fsS "${image_generation_url}/v1/models" >/dev/null 2>&1; then
+    echo "Image generator did not become ready. See ${image_generation_log:-the service log}."
+    exit 1
+  fi
+fi
+
 web_search_enabled="${WEB_SEARCH_ENABLED:-false}"
 if [[ "${web_search_enabled}" == "true" || "${web_search_enabled}" == "TRUE" || "${web_search_enabled}" == "1" ]]; then
   searxng_url="${SEARXNG_BASE_URL:-http://localhost:8080}"
@@ -88,5 +110,5 @@ if [[ "${web_search_enabled}" == "true" || "${web_search_enabled}" == "TRUE" || 
   fi
 fi
 
-echo "PostgreSQL, Ollama, and configured search services are ready."
+echo "PostgreSQL, Ollama, and configured search/image services are ready."
 

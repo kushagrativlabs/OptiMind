@@ -13,6 +13,8 @@
     "ollama:start": "ollama serve",
     "ollama:configure": "bash scripts/configure-ollama.sh",
     "ollama:models": "ollama list",
+    "image:setup": "bash scripts/setup-image-generation.sh",
+    "image:start": "bash scripts/start-image-generation.sh",
     "web-search:setup": "bash scripts/setup-searxng.sh",
     "postgres:setup": "bash scripts/setup-postgres.sh",
     "db:create": "bash scripts/create-database.sh",

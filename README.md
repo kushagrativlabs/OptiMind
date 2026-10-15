@@ -82,6 +82,24 @@ with a maximum size of 5 MB each. Attachments are stored with the conversation
 and restored when chat history is reopened. The default lightweight vision model
 is `qwen3.5:0.8b`.
 
+### Local image generation
+
+OptiMind can generate images locally through `stable-diffusion.cpp` using a
+free 1.57 GB quantized Stable Diffusion 1.5 model. Install it once:
+
+```sh
+npm run image:setup
+```
+
+Set `IMAGE_GENERATION_ENABLED=true` in `.env`, then use `npm start`. The main
+startup command starts the image service automatically. In the chat, turn on
+the **Image** pill, describe the image, and send the prompt. The generated PNG
+is stored in chat history and includes a download link.
+
+The default is 512×512 with 8 steps to remain usable on an older CPU. Increase
+`IMAGE_GENERATION_STEPS` for better quality at the cost of longer generation
+time. Image generation is substantially slower than chat on CPU-only systems.
+
 `DATABASE_URL` is required at runtime and must be provided in the root `.env`.
 Database credentials are not hardcoded in the Python or Alembic configuration.
 

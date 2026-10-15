@@ -350,6 +350,34 @@ h1 {
 
 .theme-toggle:hover { color: #263b30; }
 
+.image-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  color: #66736c;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid #d9dfd7;
+  border-radius: 999px;
+}
+
+.image-mode-toggle.active {
+  color: #263b30;
+  background: #f1f8d8;
+  border-color: #c9db91;
+}
+
+.image-mode-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.image-mode-toggle small {
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
 .theme-toggle span {
   font-size: 15px;
   line-height: 1;
@@ -550,13 +578,25 @@ h1 {
   margin: 4px 0 12px;
 }
 
+.message-images figure {
+  margin: 0;
+}
+
 .message-images img {
+  display: block;
   width: auto;
   max-width: min(100%, 420px);
   max-height: 280px;
   object-fit: contain;
   border: 1px solid #d4dbd2;
   border-radius: 10px;
+}
+
+.message-images figure a {
+  display: inline-block;
+  margin-top: 7px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .message p {
@@ -875,10 +915,17 @@ h1 {
 
 :root[data-theme='dark'] .model-picker,
 :root[data-theme='dark'] .web-search-toggle,
+:root[data-theme='dark'] .image-mode-toggle,
 :root[data-theme='dark'] .theme-toggle {
   color: #bdc9c1;
   background: rgba(35, 46, 40, 0.86);
   border-color: #3b4941;
+}
+
+:root[data-theme='dark'] .image-mode-toggle.active {
+  color: #e4efc0;
+  background: #304329;
+  border-color: #607943;
 }
 
 :root[data-theme='dark'] .web-search-toggle.active {

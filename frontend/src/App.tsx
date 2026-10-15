@@ -6,6 +6,7 @@ import {
   ChatImage,
   ConversationSummary,
   deleteConversation,
+  generateImage,
   getConversation,
   getConversations,
   getModels,
@@ -54,13 +55,15 @@ const MessageImages = ({ images = [] }: { images?: ChatImage[] }) => {
   if (images.length === 0) return null
   return (
     <div className="message-images">
-      {images.map((image, index) => (
-        <img
-          alt={image.name}
-          key={`${image.name}-${index}`}
-          src={`data:${image.media_type};base64,${image.data}`}
-        />
-      ))}
+      {images.map((image, index) => {
+        const source = `data:${image.media_type};base64,${image.data}`
+        return (
+          <figure key={`${image.name}-${index}`}>
+            <img alt={image.name} src={source} />
+            <a download={image.name} href={source}>Download image</a>
+          </figure>
+        )
+      })}
     </div>
   )
 }
@@ -104,6 +107,7 @@ function App() {
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [imageMode, setImageMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -265,6 +269,18 @@ function App() {
     activeRequestRef.current = controller
 
     try {
+      if (imageMode) {
+        const result = await generateImage(
+          content,
+          selectedModel,
+          conversationId,
+          controller.signal,
+        )
+        setConversationId(result.conversation_id)
+        setMessages((current) => [...current, result.message])
+        await refreshConversations()
+        return
+      }
       await streamChat(
         nextMessages.slice(1),
         selectedModel,
@@ -430,6 +446,7 @@ function App() {
           <StatusPill label="API" service={status?.api} />
           <StatusPill label="PostgreSQL" service={status?.database} />
           <StatusPill label="Ollama" service={status?.ollama} />
+          <StatusPill label="Image Generator" service={status?.image_generation} />
           <StatusPill label="Web Search" service={status?.web_search} />
           <button className="refresh-button" onClick={() => void refreshStatus()}>
             Refresh connections
@@ -454,6 +471,27 @@ function App() {
               <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
               <strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
             </button>
+            <button
+              aria-pressed={imageMode}
+              className={`image-mode-toggle ${imageMode ? 'active' : ''}`}
+              disabled={status?.image_generation.status !== 'online' || isSending}
+              onClick={() => {
+                setImageMode((current) => {
+                  const next = !current
+                  if (next) {
+                    setWebSearch(false)
+                    setAttachedImages([])
+                  }
+                  return next
+                })
+              }}
+              title={status?.image_generation.detail ?? 'Checking image generator'}
+              type="button"
+            >
+              <span aria-hidden="true">✦</span>
+              <strong>Image</strong>
+              <small>{imageMode ? 'On' : 'Off'}</small>
+            </button>
             <label
               className={`web-search-toggle ${webSearch ? 'active' : ''}`}
               title={status?.web_search.detail ?? 'Checking web search'}
@@ -462,7 +500,10 @@ function App() {
                 aria-label="Toggle web search"
                 checked={webSearch}
                 disabled={status?.web_search.status !== 'online' || isSending}
-                onChange={(event) => setWebSearch(event.target.checked)}
+                onChange={(event) => {
+                  setWebSearch(event.target.checked)
+                  if (event.target.checked) setImageMode(false)
+                }}
                 role="switch"
                 type="checkbox"
               />
@@ -577,9 +618,11 @@ function App() {
               <button
                 aria-label="Attach images"
                 className="attach-button"
-                disabled={isSending || attachedImages.length >= MAX_IMAGES}
+                disabled={imageMode || isSending || attachedImages.length >= MAX_IMAGES}
                 onClick={openImagePicker}
-                title={supportsVision
+                title={imageMode
+                  ? 'Turn off Image mode to analyze an uploaded image'
+                  : supportsVision
                   ? 'Attach up to 3 images'
                   : 'Select a vision-capable model to attach images'}
                 type="button"
@@ -596,7 +639,9 @@ function App() {
                     event.currentTarget.form?.requestSubmit()
                   }
                 }}
-                placeholder="Ask OptiMind about a website…"
+                placeholder={imageMode
+                  ? 'Describe the image you want to create…'
+                  : 'Ask OptiMind about a website…'}
                 ref={composerRef}
                 rows={1}
                 value={draft}
@@ -618,6 +663,8 @@ function App() {
             <p className="composer-note">
               {attachedImages.length > 0
                 ? `Image attached · ${selectedModel} is ready to process it`
+                : imageMode
+                  ? 'Image mode on · Generated locally and saved in this chat'
                 : webSearch
                   ? 'Web search on · Current sources will be cited'
                   : 'Local-first · Web search off'}
