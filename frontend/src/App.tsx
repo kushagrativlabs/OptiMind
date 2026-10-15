@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   ChatMessage,
   ConversationSummary,
@@ -27,29 +29,21 @@ const StatusPill = ({ label, service }: { label: string; service?: ServiceState 
 )
 
 const MessageText = ({ content }: { content: string }) => {
-  const pattern = /(\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s]+)/g
   return (
-    <p>
-      {content.split(pattern).map((part, index) => {
-        const markdownLink = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
-        const plainUrl = part.match(/^https?:\/\/[^\s]+$/)
-        if (markdownLink) {
-          return (
-            <a href={markdownLink[2]} key={`${markdownLink[2]}-${index}`} rel="noreferrer" target="_blank">
-              {markdownLink[1]}
+    <div className="message-content">
+      <ReactMarkdown
+        components={{
+          a: ({ children, href, title }) => (
+            <a href={href} rel="noreferrer" target="_blank" title={title}>
+              {children}
             </a>
-          )
-        }
-        if (plainUrl) {
-          return (
-            <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">
-              {part}
-            </a>
-          )
-        }
-        return part
-      })}
-    </p>
+          ),
+        }}
+        remarkPlugins={[remarkGfm]}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }
 
@@ -69,6 +63,7 @@ function App() {
   const [webSearch, setWebSearch] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
 
   const refreshStatus = async () => {
     try {
@@ -141,11 +136,16 @@ function App() {
     endRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' })
   }, [messages, isStreaming])
 
+  useEffect(() => {
+    if (!isSending) composerRef.current?.focus()
+  }, [isSending])
+
   const startConversation = () => {
     setConversationId(null)
     setMessages([initialMessage])
     setDraft('')
     setError(null)
+    requestAnimationFrame(() => composerRef.current?.focus())
   }
 
   const openConversation = async (id: string) => {
@@ -412,6 +412,7 @@ function App() {
                   }
                 }}
                 placeholder="Ask OptiMind about a website…"
+                ref={composerRef}
                 rows={1}
                 value={draft}
               />

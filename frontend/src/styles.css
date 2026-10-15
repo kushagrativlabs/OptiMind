@@ -469,6 +469,92 @@ h1 {
   white-space: pre-wrap;
 }
 
+.message-content > :first-child { margin-top: 4px; }
+.message-content > :last-child { margin-bottom: 0; }
+
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4 {
+  margin: 22px 0 8px;
+  color: #1c2923;
+  font-family: 'Manrope', sans-serif;
+  line-height: 1.3;
+}
+
+.message-content h1 { font-size: 20px; }
+.message-content h2 { font-size: 18px; }
+.message-content h3,
+.message-content h4 { font-size: 16px; }
+
+.message-content ul,
+.message-content ol {
+  margin: 10px 0;
+  padding-left: 24px;
+  color: #435249;
+}
+
+.message-content li {
+  margin: 5px 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.message-content blockquote {
+  margin: 14px 0;
+  padding: 2px 14px;
+  color: #5e6f65;
+  border-left: 3px solid #a5bc7a;
+}
+
+.message-content pre {
+  max-width: 100%;
+  margin: 14px 0;
+  padding: 14px;
+  overflow-x: auto;
+  color: #e8f1eb;
+  background: #17221c;
+  border-radius: 10px;
+}
+
+.message-content code {
+  padding: 2px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  background: #e7ebe4;
+  border-radius: 5px;
+}
+
+.message-content pre code {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border-radius: 0;
+}
+
+.message-content table {
+  width: 100%;
+  margin: 14px 0;
+  border-spacing: 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.message-content th,
+.message-content td {
+  padding: 9px 10px;
+  text-align: left;
+  border: 1px solid #d4dbd2;
+}
+
+.message-content th { background: #e9eee5; }
+
+.message-content hr {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid #d4dbd2;
+}
+
 .message .message-author {
   margin: 0 0 6px;
   color: #1c2923;
