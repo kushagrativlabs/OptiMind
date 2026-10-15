@@ -104,6 +104,7 @@ export const streamChat = async (
   conversationId: string | null,
   webSearch: boolean,
   handlers: ChatStreamHandlers,
+  signal?: AbortSignal,
 ) => {
   const response = await fetch('/api/v1/chat/stream', {
     method: 'POST',
@@ -114,6 +115,7 @@ export const streamChat = async (
       conversation_id: conversationId,
       web_search: webSearch,
     }),
+    signal,
   })
 
   if (!response.ok) {
@@ -159,15 +161,18 @@ export const streamChat = async (
     }
   }
 
-  while (true) {
-    const { value, done } = await reader.read()
-    buffer += decoder.decode(value, { stream: !done })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    lines.forEach(processLine)
-    if (done) break
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      buffer += decoder.decode(value, { stream: !done })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      lines.forEach(processLine)
+      if (done) break
+    }
+    processLine(buffer)
+  } finally {
+    flushTokens()
   }
-  processLine(buffer)
-  flushTokens()
 }
 

@@ -48,6 +48,11 @@ const MessageText = ({ content }: { content: string }) => {
 }
 
 function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('optimind-theme')
+    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [models, setModels] = useState<OllamaModel[]>([])
   const [selectedModel, setSelectedModel] = useState(
@@ -64,6 +69,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const activeRequestRef = useRef<AbortController | null>(null)
 
   const refreshStatus = async () => {
     try {
@@ -133,6 +139,11 @@ function App() {
   }, [selectedModel])
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('optimind-theme', theme)
+  }, [theme])
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' })
   }, [messages, isStreaming])
 
@@ -140,7 +151,10 @@ function App() {
     if (!isSending) composerRef.current?.focus()
   }, [isSending])
 
+  useEffect(() => () => activeRequestRef.current?.abort(), [])
+
   const startConversation = () => {
+    activeRequestRef.current?.abort()
     setConversationId(null)
     setMessages([initialMessage])
     setDraft('')
@@ -200,6 +214,8 @@ function App() {
     setError(null)
     setIsSending(true)
     setIsStreaming(false)
+    const controller = new AbortController()
+    activeRequestRef.current = controller
 
     try {
       await streamChat(
@@ -225,9 +241,14 @@ function App() {
             })
           },
         },
+        controller.signal,
       )
       await refreshConversations()
     } catch (requestError) {
+      if (requestError instanceof Error && requestError.name === 'AbortError') {
+        await refreshConversations()
+        return
+      }
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -235,9 +256,14 @@ function App() {
       )
       await refreshStatus()
     } finally {
+      if (activeRequestRef.current === controller) activeRequestRef.current = null
       setIsSending(false)
       setIsStreaming(false)
     }
+  }
+
+  const stopGeneration = () => {
+    activeRequestRef.current?.abort()
   }
 
   return (
@@ -326,6 +352,16 @@ function App() {
             <h1>Website growth assistant</h1>
           </div>
           <div className="topbar-actions">
+            <button
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              className="theme-toggle"
+              onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              type="button"
+            >
+              <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+              <strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
+            </button>
             <label
               className={`web-search-toggle ${webSearch ? 'active' : ''}`}
               title={status?.web_search.detail ?? 'Checking web search'}
@@ -416,9 +452,19 @@ function App() {
                 rows={1}
                 value={draft}
               />
-              <button disabled={!draft.trim() || isSending} type="submit">
-                <span>Send</span> ↑
-              </button>
+              {isSending ? (
+                <button
+                  className="stop-button"
+                  onClick={stopGeneration}
+                  type="button"
+                >
+                  <span>Stop</span> ■
+                </button>
+              ) : (
+                <button disabled={!draft.trim()} type="submit">
+                  <span>Send</span> ↑
+                </button>
+              )}
             </form>
             <p className="composer-note">
               {webSearch ? 'Web search on · Current sources will be cited' : 'Local-first · Web search off'}
