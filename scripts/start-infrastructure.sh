@@ -59,7 +59,7 @@ fi
 
 if ! ollama list >/dev/null 2>&1; then
   ollama_log="${TMPDIR:-/tmp}/optimind-ollama.log"
-  echo "Starting Ollama..."
+  echo "Starting Ollama with ${OLLAMA_NUM_PARALLEL:-2} parallel requests..."
   nohup ollama serve >"${ollama_log}" 2>&1 &
 
   for _ in {1..20}; do

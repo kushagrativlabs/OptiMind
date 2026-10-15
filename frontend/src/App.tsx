@@ -105,6 +105,7 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -312,6 +313,18 @@ function App() {
     activeRequestRef.current?.abort()
   }
 
+  const copyMessage = async (content: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopiedMessageIndex(index)
+      window.setTimeout(() => {
+        setCopiedMessageIndex((current) => current === index ? null : current)
+      }, 1600)
+    } catch {
+      setError('Could not copy the reply. Please select the text and copy it manually.')
+    }
+  }
+
   const attachImages = async (files: FileList | null) => {
     if (!files) return
     const availableSlots = MAX_IMAGES - attachedImages.length
@@ -489,10 +502,25 @@ function App() {
             {messages.map((message, index) => (
               <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
                 <div className="avatar">{message.role === 'assistant' ? 'O' : 'Y'}</div>
-                <div>
-                  <p className="message-author">
-                    {message.role === 'assistant' ? 'OptiMind' : 'You'}
-                  </p>
+                <div className="message-body">
+                  <div className="message-heading">
+                    <p className="message-author">
+                      {message.role === 'assistant' ? 'OptiMind' : 'You'}
+                    </p>
+                    {message.role === 'assistant' && (
+                      <button
+                        aria-label="Copy reply"
+                        className={`copy-message ${copiedMessageIndex === index ? 'copied' : ''}`}
+                        disabled={!message.content || (isStreaming && index === messages.length - 1)}
+                        onClick={() => void copyMessage(message.content, index)}
+                        title="Copy reply"
+                        type="button"
+                      >
+                        <span aria-hidden="true">{copiedMessageIndex === index ? '✓' : '▣'}</span>
+                        {copiedMessageIndex === index ? 'Copied' : 'Copy'}
+                      </button>
+                    )}
+                  </div>
                   <MessageImages images={message.images} />
                   <MessageText content={message.content} />
                 </div>

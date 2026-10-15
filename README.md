@@ -43,6 +43,21 @@ After the initial setup, start PostgreSQL, Ollama, the API, and the frontend wit
 npm start
 ```
 
+### Run two chats at the same time
+
+OptiMind defaults to two parallel Ollama requests, which is suitable for a
+16 GB computer when using the lightweight models. On macOS, apply the setting
+once and restart the Ollama app:
+
+```sh
+npm run ollama:configure
+```
+
+On Ubuntu, add `OLLAMA_NUM_PARALLEL=2` and `OLLAMA_MAX_LOADED_MODELS=1` to the
+Ollama systemd service environment, then restart it with
+`sudo systemctl restart ollama`. Increasing parallelism uses more RAM; keep it
+at 2 on a 16 GB system.
+
 ### Setup commands
 
 Run individual setup steps when needed:

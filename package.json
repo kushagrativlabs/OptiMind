@@ -11,6 +11,7 @@
     "install:backend": "python3 -m venv backend/.venv && backend/.venv/bin/python -m pip install -e 'backend[dev]'",
     "ollama:setup": "bash scripts/setup-ollama.sh",
     "ollama:start": "ollama serve",
+    "ollama:configure": "bash scripts/configure-ollama.sh",
     "ollama:models": "ollama list",
     "web-search:setup": "bash scripts/setup-searxng.sh",
     "postgres:setup": "bash scripts/setup-postgres.sh",
