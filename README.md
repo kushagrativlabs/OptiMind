@@ -84,8 +84,9 @@ is `qwen3.5:0.8b`.
 
 ### Local image generation
 
-OptiMind can generate images locally through `stable-diffusion.cpp` using a
-free 1.57 GB quantized Stable Diffusion 1.5 model. Install it once:
+OptiMind can generate images locally through `stable-diffusion.cpp` using the
+free quantized LCM-SSD-1B model. It has stronger SDXL-based prompt adherence
+than the earlier Stable Diffusion 1.5 model while remaining CPU-friendly. Install it once:
 
 ```sh
 npm run image:setup
@@ -96,9 +97,17 @@ startup command starts the image service automatically. In the chat, turn on
 the **Image** pill, describe the image, and send the prompt. The generated PNG
 is stored in chat history and includes a download link.
 
-The default is 512×512 with 8 steps to remain usable on an older CPU. Increase
-`IMAGE_GENERATION_STEPS` for better quality at the cost of longer generation
-time. Image generation is substantially slower than chat on CPU-only systems.
+Put wording that must be spelled exactly inside quotation marks, for example
+`a neon sign that says "MIDNIGHT CAFE"`. OptiMind generates the scene locally
+and then renders the quoted wording itself because diffusion models are not
+reliable text spellers.
+
+The default is 512×512 with four LCM steps. It uses a separate SDXL VAE so the
+Q4 model decodes images reliably.
+`IMAGE_GENERATION_BACKEND=cpu` is the safe default for Ubuntu and also avoids
+white-image numerical failures seen with some Metal/Q4 combinations. Keep the
+LCM model at four steps unless you intentionally test different sampling
+settings. Image generation is substantially slower than chat on CPU-only systems.
 
 `DATABASE_URL` is required at runtime and must be provided in the root `.env`.
 Database credentials are not hardcoded in the Python or Alembic configuration.

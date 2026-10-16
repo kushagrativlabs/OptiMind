@@ -13,9 +13,11 @@ class Settings(BaseSettings):
     ollama_num_ctx: int = 4096
     image_generation_enabled: bool = False
     image_generation_base_url: str = "http://localhost:1234"
-    image_generation_model: str = "stable-diffusion-v1.5-q4"
+    image_generation_model: str = "lcm-ssd-1b-q4"
     image_generation_size: str = "512x512"
-    image_generation_steps: int = 8
+    image_generation_steps: int = 4
+    image_generation_cfg_scale: float = 1.0
+    image_generation_sampler: str = "lcm"
     web_search_enabled: bool = False
     searxng_base_url: str = "http://localhost:8080"
     frontend_origin: str = "http://localhost:5173"

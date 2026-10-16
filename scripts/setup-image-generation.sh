@@ -5,8 +5,10 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 runtime_dir="${IMAGE_GENERATION_RUNTIME_DIR:-${project_root}/.local/stable-diffusion.cpp}"
 models_dir="${IMAGE_GENERATION_MODELS_DIR:-${project_root}/.local/image-models}"
-model_path="${models_dir}/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf"
-model_url="https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf?download=true"
+model_path="${models_dir}/lcm-ssd-1b.q4_k.gguf"
+model_url="https://huggingface.co/OlegSkutte/LCM-SSD-1B-GGUF/resolve/main/lcm-ssd-1b.q4_k.gguf"
+vae_path="${models_dir}/sdxl_vae.safetensors"
+vae_url="https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors"
 
 if ! command -v cmake >/dev/null 2>&1; then
   echo "Installing the image generator build tools..."
@@ -57,6 +59,11 @@ cmake --build "${runtime_dir}/build" --config Release -j 2
 if [[ ! -f "${model_path}" ]]; then
   echo "Downloading the 1.57 GB quantized Stable Diffusion model..."
   curl --fail --location --retry 3 --continue-at - --output "${model_path}" "${model_url}"
+fi
+
+if [[ ! -f "${vae_path}" ]]; then
+  echo "Downloading the SDXL VAE used to decode generated images..."
+  curl -L --fail --progress-bar "${vae_url}" -o "${vae_path}"
 fi
 
 echo "Image generation setup is ready. Run: npm run image:start"
