@@ -107,6 +107,14 @@ const CodeBlock = ({ children }: { children?: ReactNode }) => {
   )
 }
 
+const normalizeMarkdown = (content: string) => {
+  const escapedMarkdown = (content.match(/\\(?:[*_`#>~-])/g) ?? []).length
+  if (escapedMarkdown < 2) return content
+  return content
+    .replace(/\\([*_`#>~-])/g, '$1')
+    .replace(/\\\((.*?)\\\)/g, '($1)')
+}
+
 const MessageText = ({ content }: { content: string }) => {
   return (
     <div className="message-content">
@@ -121,7 +129,7 @@ const MessageText = ({ content }: { content: string }) => {
         }}
         remarkPlugins={[remarkGfm]}
       >
-        {content}
+        {normalizeMarkdown(content)}
       </ReactMarkdown>
     </div>
   )
@@ -523,7 +531,7 @@ function App() {
 
   const copyMessage = async (content: string, index: number) => {
     try {
-      await navigator.clipboard.writeText(content)
+      await navigator.clipboard.writeText(normalizeMarkdown(content))
       setCopiedMessageIndex(index)
       window.setTimeout(() => {
         setCopiedMessageIndex((current) => current === index ? null : current)

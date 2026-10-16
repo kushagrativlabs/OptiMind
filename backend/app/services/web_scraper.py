@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import json
 import re
 import socket
 import time
@@ -57,11 +58,23 @@ class WebScrapeError(Exception):
 
 
 @dataclass(frozen=True)
+class PageSEO:
+    meta_description: str | None = None
+    canonical_url: str | None = None
+    robots: str | None = None
+    headings: tuple[tuple[str, str], ...] = ()
+    schema_types: tuple[str, ...] = ()
+    image_count: int = 0
+    images_missing_alt: int = 0
+
+
+@dataclass(frozen=True)
 class WebPage:
     url: str
     title: str
     text: str
     links: tuple[str, ...] = ()
+    seo: PageSEO | None = None
 
 
 class ReadableHTMLParser(HTMLParser):
@@ -72,40 +85,125 @@ class ReadableHTMLParser(HTMLParser):
         self.links: list[str] = []
         self.skipped_depth = 0
         self.in_title = False
+        self.in_json_ld = False
+        self.json_ld_parts: list[str] = []
+        self.json_ld_documents: list[str] = []
+        self.meta_description: str | None = None
+        self.canonical_href: str | None = None
+        self.robots: str | None = None
+        self.current_heading: str | None = None
+        self.heading_parts: list[str] = []
+        self.headings: list[tuple[str, str]] = []
+        self.image_count = 0
+        self.images_missing_alt = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
-        if tag in SKIPPED_TAGS:
+        attributes = {name.lower(): value for name, value in attrs}
+        if tag == "script" and (attributes.get("type") or "").lower() == (
+            "application/ld+json"
+        ):
+            self.in_json_ld = True
+            self.json_ld_parts = []
+        elif tag in SKIPPED_TAGS:
             self.skipped_depth += 1
         elif tag == "a" and self.skipped_depth == 0:
-            href = next((value for name, value in attrs if name.lower() == "href"), None)
+            href = attributes.get("href")
             if href:
                 self.links.append(href)
+        elif tag == "meta" and self.skipped_depth == 0:
+            name = (attributes.get("name") or "").lower()
+            content = (attributes.get("content") or "").strip()
+            if name == "description" and content:
+                self.meta_description = content
+            elif name == "robots" and content:
+                self.robots = content
+        elif tag == "link" and self.skipped_depth == 0:
+            rel = (attributes.get("rel") or "").lower().split()
+            if "canonical" in rel and attributes.get("href"):
+                self.canonical_href = attributes["href"]
+        elif tag == "img" and self.skipped_depth == 0:
+            self.image_count += 1
+            if not (attributes.get("alt") or "").strip():
+                self.images_missing_alt += 1
         elif tag == "title" and self.skipped_depth == 0:
             self.in_title = True
         elif tag in {"p", "br", "li", "h1", "h2", "h3", "h4", "article", "section"}:
             self.parts.append("\n")
+            if tag in {"h1", "h2", "h3", "h4"}:
+                self.current_heading = tag
+                self.heading_parts = []
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
-        if tag in SKIPPED_TAGS and self.skipped_depth:
+        if tag == "script" and self.in_json_ld:
+            document = "".join(self.json_ld_parts).strip()
+            if document:
+                self.json_ld_documents.append(document)
+            self.in_json_ld = False
+            self.json_ld_parts = []
+        elif tag in SKIPPED_TAGS and self.skipped_depth:
             self.skipped_depth -= 1
         elif tag == "title":
             self.in_title = False
+        elif tag == self.current_heading:
+            value = " ".join(" ".join(self.heading_parts).split())
+            if value:
+                self.headings.append((tag, value))
+            self.current_heading = None
+            self.heading_parts = []
 
     def handle_data(self, data: str) -> None:
+        if self.in_json_ld:
+            self.json_ld_parts.append(data)
+            return
         if self.skipped_depth or not data.strip():
             return
         if self.in_title:
             self.title_parts.append(data)
         else:
             self.parts.append(data)
+            if self.current_heading:
+                self.heading_parts.append(data)
 
     def result(self) -> tuple[str, str]:
         title = " ".join(" ".join(self.title_parts).split())
         text = re.sub(r"\n\s*\n+", "\n", "".join(self.parts))
         text = "\n".join(" ".join(line.split()) for line in text.splitlines() if line.strip())
         return title, text
+
+    def seo_result(self, base_url: str) -> PageSEO:
+        schema_types: set[str] = set()
+
+        def collect_types(value: object) -> None:
+            if isinstance(value, dict):
+                item_type = value.get("@type")
+                if isinstance(item_type, str):
+                    schema_types.add(item_type)
+                elif isinstance(item_type, list):
+                    schema_types.update(str(item) for item in item_type if item)
+                for child in value.values():
+                    collect_types(child)
+            elif isinstance(value, list):
+                for child in value:
+                    collect_types(child)
+
+        for document in self.json_ld_documents:
+            try:
+                collect_types(json.loads(document))
+            except (TypeError, ValueError):
+                continue
+
+        canonical_url = urljoin(base_url, self.canonical_href) if self.canonical_href else None
+        return PageSEO(
+            meta_description=self.meta_description,
+            canonical_url=canonical_url,
+            robots=self.robots,
+            headings=tuple(self.headings),
+            schema_types=tuple(sorted(schema_types)),
+            image_count=self.image_count,
+            images_missing_alt=self.images_missing_alt,
+        )
 
 
 def extract_urls(text: str) -> list[str]:
@@ -134,6 +232,14 @@ def extract_readable_text(html: str) -> tuple[str, str]:
 
 
 def extract_page_data(html: str, base_url: str) -> tuple[str, str, tuple[str, ...]]:
+    title, text, links, _ = inspect_page_data(html, base_url)
+    return title, text, links
+
+
+def inspect_page_data(
+    html: str,
+    base_url: str,
+) -> tuple[str, str, tuple[str, ...], PageSEO]:
     parser = ReadableHTMLParser()
     parser.feed(html)
     title, text = parser.result()
@@ -146,7 +252,7 @@ def extract_page_data(html: str, base_url: str) -> tuple[str, str, tuple[str, ..
         normalized = urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/", "", ""))
         if normalized not in links:
             links.append(normalized)
-    return title, text, tuple(links)
+    return title, text, tuple(links), parser.seo_result(base_url)
 
 
 def _site_hostname(url: str) -> str:
@@ -257,13 +363,14 @@ class WebScraper:
         if "text/plain" in content_type:
             title, text = "", " ".join(body.split())
             links = ()
+            seo = None
         else:
-            title, text, links = extract_page_data(body, url)
+            title, text, links, seo = inspect_page_data(body, url)
         text = text[:MAX_PAGE_CHARACTERS].strip()
         if not text:
             raise WebScrapeError("No readable text was found on that webpage.")
 
-        page = WebPage(url=url, title=title or url, text=text, links=links)
+        page = WebPage(url=url, title=title or url, text=text, links=links, seo=seo)
         self._cache[requested_url] = (time.monotonic(), page)
         return page
 

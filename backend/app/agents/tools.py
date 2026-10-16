@@ -61,6 +61,26 @@ class ToolResult(BaseModel):
     detail: str
 
 
+def page_source_content(page: object) -> str:
+    seo = getattr(page, "seo", None)
+    if seo is None:
+        return getattr(page, "text", "")
+    headings = ", ".join(f"{level}: {text}" for level, text in seo.headings) or "None found"
+    schemas = ", ".join(seo.schema_types) or "None found"
+    return (
+        "VERIFIED PAGE SEO EVIDENCE:\n"
+        f"Title tag: {page.title or 'NOT FOUND'}\n"
+        f"Meta description: {seo.meta_description or 'NOT FOUND'}\n"
+        f"Canonical URL: {seo.canonical_url or 'NOT FOUND'}\n"
+        f"Robots: {seo.robots or 'NOT FOUND'}\n"
+        f"Headings: {headings}\n"
+        f"JSON-LD schema types: {schemas}\n"
+        f"Images: {seo.image_count}; images missing alt: {seo.images_missing_alt}\n\n"
+        "READABLE PAGE CONTENT:\n"
+        f"{page.text}"
+    )
+
+
 ToolHandler = Callable[[BaseModel], Awaitable[ToolResult]]
 
 
@@ -118,7 +138,7 @@ async def _read_webpage(input_data: BaseModel) -> ToolResult:
     page = await web_scraper.scrape(request.url)
     return ToolResult(
         call=ToolCall(id="pending", name="read_webpage", label="Read webpage", arguments={}),
-        sources=[ToolSource(url=page.url, title=page.title, content=page.text)],
+        sources=[ToolSource(url=page.url, title=page.title, content=page_source_content(page))],
         detail="Read one public webpage.",
     )
 
@@ -129,7 +149,8 @@ async def _crawl_website(input_data: BaseModel) -> ToolResult:
     return ToolResult(
         call=ToolCall(id="pending", name="crawl_website", label="Crawl website", arguments={}),
         sources=[
-            ToolSource(url=page.url, title=page.title, content=page.text) for page in pages
+            ToolSource(url=page.url, title=page.title, content=page_source_content(page))
+            for page in pages
         ],
         detail=f"Read {len(pages)} page{'s' if len(pages) != 1 else ''} from the website.",
     )
