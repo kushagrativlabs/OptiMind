@@ -38,11 +38,20 @@ class GenerationMetrics(BaseModel):
     output_tokens: int | None = Field(default=None, ge=0)
 
 
+class AgentActivity(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    tool: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=300)
+    status: Literal["planned", "running", "completed", "failed"]
+    detail: str = Field(default="", max_length=1_000)
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=20_000)
     images: list[ChatImage] = Field(default_factory=list, max_length=3)
     metrics: GenerationMetrics | None = None
+    activities: list[AgentActivity] = Field(default_factory=list, max_length=20)
 
 
 class ChatRequest(BaseModel):

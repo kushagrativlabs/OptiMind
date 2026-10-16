@@ -5,10 +5,9 @@ from datetime import UTC, datetime
 
 import httpx
 
+from app.agents.tools import AgentToolError, ToolResult, agent_tools
 from app.core.config import settings
 from app.schemas.chat import ChatMessage, GenerationMetrics, OllamaChatResponse, OllamaModel
-from app.services.web_scraper import WebScrapeError, web_scraper
-from app.services.web_search import WebSearchError, web_search_service
 
 MAX_WEB_CONTEXT_CHARACTERS = 8_000
 
@@ -99,6 +98,7 @@ class OllamaService:
         messages: list[ChatMessage],
         requested_model: str | None = None,
         use_web_search: bool = False,
+        tool_results: list[ToolResult] | None = None,
     ) -> OllamaChatResponse:
         model = requested_model or self.model
         await self.validate_model(
@@ -109,8 +109,10 @@ class OllamaService:
         try:
             payload = {
                 "model": model,
-                "messages": await self.messages_with_web_context(
-                    messages, use_web_search
+                "messages": (
+                    self.messages_with_results(messages, tool_results)
+                    if tool_results is not None
+                    else await self.messages_with_tool_context(messages, use_web_search)
                 ),
                 "stream": False,
                 "keep_alive": settings.ollama_keep_alive,
@@ -126,9 +128,7 @@ class OllamaService:
             if exc.response.status_code == 404:
                 detail = f"Model {model} is not installed. Run: ollama pull {model}"
             raise OllamaConnectionError(detail) from exc
-        except WebScrapeError as exc:
-            raise OllamaConnectionError(str(exc)) from exc
-        except WebSearchError as exc:
+        except AgentToolError as exc:
             raise OllamaConnectionError(str(exc)) from exc
         except httpx.HTTPError as exc:
             raise OllamaConnectionError("Ollama did not complete the request.") from exc
@@ -165,6 +165,7 @@ class OllamaService:
         messages: list[ChatMessage],
         requested_model: str | None = None,
         use_web_search: bool = False,
+        tool_results: list[ToolResult] | None = None,
     ) -> AsyncIterator[OllamaStreamEvent]:
         model = requested_model or self.model
         timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=10.0)
@@ -172,8 +173,10 @@ class OllamaService:
         try:
             payload = {
                 "model": model,
-                "messages": await self.messages_with_web_context(
-                    messages, use_web_search
+                "messages": (
+                    self.messages_with_results(messages, tool_results)
+                    if tool_results is not None
+                    else await self.messages_with_tool_context(messages, use_web_search)
                 ),
                 "stream": True,
                 "keep_alive": settings.ollama_keep_alive,
@@ -209,28 +212,25 @@ class OllamaService:
             if exc.response.status_code == 404:
                 detail = f"Model {model} is not installed. Run: ollama pull {model}"
             raise OllamaConnectionError(detail) from exc
-        except WebScrapeError as exc:
-            raise OllamaConnectionError(str(exc)) from exc
-        except WebSearchError as exc:
+        except AgentToolError as exc:
             raise OllamaConnectionError(str(exc)) from exc
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             raise OllamaConnectionError("Ollama did not complete the request.") from exc
 
-    async def messages_with_web_context(
+    async def messages_with_tool_context(
         self,
         messages: list[ChatMessage],
         use_web_search: bool = False,
     ) -> list[dict[str, object]]:
-        pages = await web_scraper.pages_from_messages(messages)
-        latest_user_message = next(
-            (message.content for message in reversed(messages) if message.role == "user"),
-            "",
-        )
-        search_results = (
-            await web_search_service.search(latest_user_message)
-            if use_web_search
-            else []
-        )
+        calls = agent_tools.plan(messages, use_web_search)
+        results = [await agent_tools.execute(call) for call in calls]
+        return self.messages_with_results(messages, results)
+
+    def messages_with_results(
+        self,
+        messages: list[ChatMessage],
+        results: list[ToolResult],
+    ) -> list[dict[str, object]]:
         ollama_messages: list[dict[str, object]] = []
         for message in messages:
             ollama_message: dict[str, object] = {
@@ -240,28 +240,25 @@ class OllamaService:
             if message.images:
                 ollama_message["images"] = [image.data for image in message.images]
             ollama_messages.append(ollama_message)
-        if not pages and not search_results:
+        if not results:
             return ollama_messages
 
         source_parts: list[str] = []
         remaining = MAX_WEB_CONTEXT_CHARACTERS
-        for page in pages:
-            header = f"SOURCE URL: {page.url}\nTITLE: {page.title}\nCONTENT:\n"
-            available = remaining - len(header)
-            if available <= 0:
+        for result in results:
+            for item in result.sources:
+                header = (
+                    f"TOOL: {result.call.name}\nSOURCE URL: {item.url}\n"
+                    f"TITLE: {item.title}\nCONTENT:\n"
+                )
+                available = remaining - len(header)
+                if available <= 0:
+                    break
+                source = header + item.content[:available]
+                source_parts.append(source)
+                remaining -= len(source)
+            if remaining <= 0:
                 break
-            source = header + page.text[:available]
-            source_parts.append(source)
-            remaining -= len(source)
-
-        for result in search_results:
-            header = f"SEARCH RESULT: {result.title}\nSOURCE URL: {result.url}\nCONTENT:\n"
-            available = remaining - len(header)
-            if available <= 0:
-                break
-            source = header + result.content[:available]
-            source_parts.append(source)
-            remaining -= len(source)
         sources = "\n\n".join(source_parts)
         instruction = (
             f"Today is {datetime.now(UTC).date().isoformat()}. The source text below may "
@@ -275,3 +272,10 @@ class OllamaService:
             f"{sources}"
         )
         return [{"role": "system", "content": instruction}, *ollama_messages]
+
+    async def messages_with_web_context(
+        self,
+        messages: list[ChatMessage],
+        use_web_search: bool = False,
+    ) -> list[dict[str, object]]:
+        return await self.messages_with_tool_context(messages, use_web_search)

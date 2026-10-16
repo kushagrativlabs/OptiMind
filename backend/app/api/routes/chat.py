@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.tools import AgentToolError, ToolResult, agent_tools
 from app.core.database import get_session, session_factory
 from app.models import Conversation, Message
-from app.schemas.chat import ChatRequest, ChatResponse, OllamaModel
+from app.schemas.chat import AgentActivity, ChatRequest, ChatResponse, OllamaModel
 from app.services.ollama import (
     OllamaConnectionError,
     OllamaModelError,
@@ -21,6 +22,22 @@ router = APIRouter()
 
 def stream_event(event_type: str, **data: object) -> str:
     return json.dumps({"type": event_type, **data}) + "\n"
+
+
+async def execute_tools(
+    request: ChatRequest,
+) -> tuple[list[ToolResult], list[AgentActivity]]:
+    results: list[ToolResult] = []
+    activities: list[AgentActivity] = []
+    for call in agent_tools.plan(request.messages, request.web_search):
+        try:
+            result = await agent_tools.execute(call)
+        except AgentToolError as exc:
+            activities.append(call.activity("failed", str(exc)))
+            raise
+        results.append(result)
+        activities.append(call.activity("completed", result.detail))
+    return results, activities
 
 
 @router.get("/models", response_model=list[OllamaModel])
@@ -76,10 +93,12 @@ async def chat(
     await session.flush()
 
     try:
+        tool_results, activities = await execute_tools(request)
         response = await OllamaService().chat(
             request.messages,
             model,
             use_web_search=request.web_search,
+            tool_results=tool_results,
         )
     except OllamaModelError as exc:
         raise HTTPException(
@@ -91,20 +110,28 @@ async def chat(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+    except AgentToolError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    response_message = response.message.model_copy(update={"activities": activities})
 
     session.add(
         Message(
             conversation_id=conversation.id,
             role="assistant",
-            content=response.message.content,
+            content=response_message.content,
             images=[],
             metrics=(response.metrics.model_dump() if response.metrics else None),
+            activities=[activity.model_dump() for activity in activities],
         )
     )
     conversation.updated_at = datetime.now(UTC)
     await session.commit()
     return ChatResponse(
-        message=response.message,
+        message=response_message,
         model=response.model,
         conversation_id=conversation.id,
         metrics=response.metrics,
@@ -173,14 +200,48 @@ async def chat_stream(
     async def generate() -> AsyncIterator[str]:
         chunks: list[str] = []
         metrics = None
+        activities: list[AgentActivity] = []
+        tool_results: list[ToolResult] = []
         yield stream_event(
             "meta", conversation_id=str(conversation_id), model=model
         )
         try:
+            calls = agent_tools.plan(request.messages, request.web_search)
+            for call in calls:
+                planned = call.activity("planned")
+                activities.append(planned)
+                yield stream_event("activity", activity=planned.model_dump())
+
+            for call in calls:
+                running = call.activity("running")
+                activities = [
+                    running if activity.id == call.id else activity
+                    for activity in activities
+                ]
+                yield stream_event("activity", activity=running.model_dump())
+                try:
+                    result = await agent_tools.execute(call)
+                except AgentToolError as exc:
+                    failed = call.activity("failed", str(exc))
+                    activities = [
+                        failed if activity.id == call.id else activity
+                        for activity in activities
+                    ]
+                    yield stream_event("activity", activity=failed.model_dump())
+                    raise OllamaConnectionError(str(exc)) from exc
+                tool_results.append(result)
+                completed = call.activity("completed", result.detail)
+                activities = [
+                    completed if activity.id == call.id else activity
+                    for activity in activities
+                ]
+                yield stream_event("activity", activity=completed.model_dump())
+
             async for event in service.chat_stream(
                 request.messages,
                 model,
                 use_web_search=request.web_search,
+                tool_results=tool_results,
             ):
                 if event.content:
                     chunks.append(event.content)
@@ -207,6 +268,7 @@ async def chat_stream(
                         content=content,
                         images=[],
                         metrics=(metrics.model_dump() if metrics else None),
+                        activities=[activity.model_dump() for activity in activities],
                     )
                 )
                 if saved_conversation is not None:

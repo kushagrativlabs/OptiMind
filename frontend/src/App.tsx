@@ -1,7 +1,8 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { Children, FormEvent, isValidElement, ReactNode, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
+  AgentActivity,
   ChatMessage,
   ChatImage,
   ConversationSummary,
@@ -68,6 +69,41 @@ const MessageImages = ({ images = [] }: { images?: ChatImage[] }) => {
   )
 }
 
+const nodeText = (node: ReactNode): string => {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join('')
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children)
+  return ''
+}
+
+const CodeBlock = ({ children }: { children?: ReactNode }) => {
+  const [copied, setCopied] = useState(false)
+  const codeElement = Children.toArray(children)[0]
+  const language = isValidElement<{ className?: string }>(codeElement)
+    ? codeElement.props.className?.replace('language-', '')
+    : undefined
+  const code = nodeText(codeElement).replace(/\n$/, '')
+
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1600)
+  }
+
+  return (
+    <div className="code-block">
+      <div className="code-block-heading">
+        <span>{language || 'Code'}</span>
+        <button onClick={() => void copyCode()} type="button">
+          <span aria-hidden="true">{copied ? '✓' : '▣'}</span>
+          {copied ? 'Copied' : 'Copy code'}
+        </button>
+      </div>
+      <pre>{children}</pre>
+    </div>
+  )
+}
+
 const MessageText = ({ content }: { content: string }) => {
   return (
     <div className="message-content">
@@ -78,6 +114,7 @@ const MessageText = ({ content }: { content: string }) => {
               {children}
             </a>
           ),
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
         }}
         remarkPlugins={[remarkGfm]}
       >
@@ -105,6 +142,44 @@ const MessageMetrics = ({ metrics }: { metrics?: ChatMessage['metrics'] }) => {
   )
 }
 
+const ActivityLog = ({
+  activities = [],
+  live = false,
+}: {
+  activities?: AgentActivity[]
+  live?: boolean
+}) => {
+  if (activities.length === 0) return null
+  const complete = activities.every((activity) => activity.status === 'completed')
+  return (
+    <details className="activity-log" open={live || !complete}>
+      <summary>
+        <span aria-hidden="true">{complete ? '✓' : '⌁'}</span>
+        {live ? 'Working plan' : `Work completed · ${activities.length} step${activities.length === 1 ? '' : 's'}`}
+      </summary>
+      <ol>
+        {activities.map((activity) => (
+          <li className={activity.status} key={activity.id}>
+            <span className="activity-state" aria-hidden="true">
+              {activity.status === 'completed'
+                ? '✓'
+                : activity.status === 'failed'
+                  ? '!'
+                  : activity.status === 'running'
+                    ? '●'
+                    : '○'}
+            </span>
+            <span>
+              <strong>{activity.label}</strong>
+              {activity.detail && <small>{activity.detail}</small>}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
 function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('optimind-theme')
@@ -124,6 +199,7 @@ function App() {
   const [isSending, setIsSending] = useState(false)
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [activeActivities, setActiveActivities] = useState<AgentActivity[]>([])
   const [webSearch, setWebSearch] = useState(false)
   const [imageMode, setImageMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -132,6 +208,7 @@ function App() {
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const activeRequestRef = useRef<AbortController | null>(null)
+  const activeActivitiesRef = useRef<AgentActivity[]>([])
   const selectedModelInfo = models.find((model) => model.name === selectedModel)
   const supportsVision = selectedModelInfo?.capabilities.includes('vision') ?? false
 
@@ -224,6 +301,8 @@ function App() {
     setDraft('')
     setAttachedImages([])
     setError(null)
+    setActiveActivities([])
+    activeActivitiesRef.current = []
     requestAnimationFrame(() => composerRef.current?.focus())
   }
 
@@ -283,6 +362,8 @@ function App() {
     setError(null)
     setIsSending(true)
     setIsStreaming(false)
+    setActiveActivities([])
+    activeActivitiesRef.current = []
     const controller = new AbortController()
     activeRequestRef.current = controller
 
@@ -318,7 +399,34 @@ function App() {
                   { ...lastMessage, content: lastMessage.content + chunk },
                 ]
               }
-              return [...current, { role: 'assistant', content: chunk }]
+              return [
+                ...current,
+                {
+                  role: 'assistant',
+                  content: chunk,
+                  activities: activeActivitiesRef.current,
+                },
+              ]
+            })
+          },
+          onActivity: (activity) => {
+            const existingIndex = activeActivitiesRef.current.findIndex(
+              (item) => item.id === activity.id,
+            )
+            const nextActivities = existingIndex === -1
+              ? [...activeActivitiesRef.current, activity]
+              : activeActivitiesRef.current.map((item) =>
+                  item.id === activity.id ? activity : item
+                )
+            activeActivitiesRef.current = nextActivities
+            setActiveActivities(nextActivities)
+            setMessages((current) => {
+              const lastMessage = current.at(-1)
+              if (lastMessage?.role !== 'assistant') return current
+              return [
+                ...current.slice(0, -1),
+                { ...lastMessage, activities: nextActivities },
+              ]
             })
           },
           onMetrics: (metrics) => {
@@ -350,6 +458,8 @@ function App() {
       if (activeRequestRef.current === controller) activeRequestRef.current = null
       setIsSending(false)
       setIsStreaming(false)
+      setActiveActivities([])
+      activeActivitiesRef.current = []
     }
   }
 
@@ -578,18 +688,19 @@ function App() {
                     </p>
                     {message.role === 'assistant' && (
                       <button
-                        aria-label="Copy reply"
+                        aria-label="Copy reply as Markdown"
                         className={`copy-message ${copiedMessageIndex === index ? 'copied' : ''}`}
                         disabled={!message.content || (isStreaming && index === messages.length - 1)}
                         onClick={() => void copyMessage(message.content, index)}
-                        title="Copy reply"
+                        title="Copy the complete reply as Markdown"
                         type="button"
                       >
                         <span aria-hidden="true">{copiedMessageIndex === index ? '✓' : '▣'}</span>
-                        {copiedMessageIndex === index ? 'Copied' : 'Copy'}
+                        {copiedMessageIndex === index ? 'Copied' : 'Copy Markdown'}
                       </button>
                     )}
                   </div>
+                  <ActivityLog activities={message.activities} />
                   <MessageImages images={message.images} />
                   <MessageText content={message.content} />
                   {message.role === 'assistant' && <MessageMetrics metrics={message.metrics} />}
@@ -601,6 +712,7 @@ function App() {
                 <div className="avatar">O</div>
                 <div>
                   <p className="message-author">OptiMind</p>
+                  <ActivityLog activities={activeActivities} live />
                   <div className="thinking" aria-label="Thinking">
                     <span />
                     <span />

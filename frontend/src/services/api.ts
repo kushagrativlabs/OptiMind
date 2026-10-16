@@ -16,6 +16,15 @@ export type ChatMessage = {
   content: string
   images?: ChatImage[]
   metrics?: GenerationMetrics | null
+  activities?: AgentActivity[]
+}
+
+export type AgentActivity = {
+  id: string
+  tool: string
+  label: string
+  status: 'planned' | 'running' | 'completed' | 'failed'
+  detail: string
 }
 
 export type GenerationMetrics = {
@@ -126,12 +135,14 @@ export const sendChat = (
 type ChatStreamEvent =
   | { type: 'meta'; conversation_id: string; model: string }
   | { type: 'token'; content: string }
+  | { type: 'activity'; activity: AgentActivity }
   | { type: 'done'; metrics?: GenerationMetrics | null }
   | { type: 'error'; detail: string }
 
 type ChatStreamHandlers = {
   onConversation: (conversationId: string, model: string) => void
   onToken: (content: string) => void
+  onActivity: (activity: AgentActivity) => void
   onMetrics: (metrics: GenerationMetrics) => void
 }
 
@@ -190,6 +201,9 @@ export const streamChat = async (
     } else if (event.type === 'token') {
       tokenBuffer += event.content
       scheduleTokenFlush()
+    } else if (event.type === 'activity') {
+      flushTokens()
+      handlers.onActivity(event.activity)
     } else if (event.type === 'done') {
       flushTokens()
       if (event.metrics) handlers.onMetrics(event.metrics)

@@ -7,12 +7,12 @@ sessions, use controlled tools, show its work, and let the user stop an active t
 
 ## Progress
 
-Phase 2 is currently **3/5 complete**.
+Phase 2 is **complete (5/5)**.
 
 - [x] Build the Codex-style chat interface.
 - [x] Create conversation sessions and persistent message history.
-- [ ] Implement the tool-calling architecture and tool registry.
-- [ ] Add task planning and visible execution logs.
+- [x] Implement the tool-calling architecture and tool registry.
+- [x] Add task planning and visible execution logs.
 - [x] Implement stop/cancel generation.
 
 ## Completed capabilities
@@ -25,10 +25,12 @@ Phase 2 is currently **3/5 complete**.
 - Web-search toggle and cited results
 - URL scraping and bounded same-site crawling
 - Stop button that cancels the active browser request and Ollama stream
+- Typed, permission-aware registry for web search, webpage reading, and crawling
+- Live task steps with planned, running, completed, and failed states
+- Tool execution history stored with the assistant message
 
 ## Next implementation slice
 
-Create a backend tool registry with typed inputs, explicit permission metadata,
-execution results, and stream events. The first registered tools will be read-only:
-web search, webpage retrieval, and website crawling. Task planning and execution
-logs will then consume the same event format.
+Begin Phase 3 with stored website profiles, a website selector, public WordPress
+connection testing, and website-specific conversation context. Credentials remain
+out of scope until encrypted secret storage is configured.
