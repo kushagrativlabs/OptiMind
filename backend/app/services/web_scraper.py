@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import json
+import os
 import re
 import socket
 import time
@@ -48,8 +49,11 @@ SKIPPED_EXTENSIONS = {
 MAX_DOWNLOAD_BYTES = 2_000_000
 MAX_PAGE_CHARACTERS = 12_000
 MAX_INPUT_URLS = 2
-MAX_SITE_PAGES = 8
-MAX_CRAWL_DEPTH = 2
+# A hard safety ceiling prevents an accidental crawl from exhausting local
+# resources, while allowing normal websites to be crawled beyond the old
+# eight-page/two-level sample.
+MAX_SITE_PAGES = max(8, int(os.getenv("OPTIMIND_MAX_SITE_PAGES", "100")))
+MAX_CRAWL_DEPTH = max(2, int(os.getenv("OPTIMIND_MAX_CRAWL_DEPTH", "6")))
 CACHE_SECONDS = 600
 
 
@@ -376,13 +380,12 @@ class WebScraper:
 
     async def scrape_site(self, requested_url: str) -> list[WebPage]:
         root = await self.scrape(requested_url)
-        parsed_root = urlsplit(root.url)
-        if parsed_root.path not in {"", "/"} or parsed_root.query:
-            return [root]
-
         pages = [root]
         visited = {root.url}
-        queue = [(link, 1) for link in root.links if _can_crawl(root.url, link)]
+        queue = []
+        for link in root.links:
+            if link not in visited and _can_crawl(root.url, link):
+                queue.append((link, 1))
 
         while queue and len(pages) < MAX_SITE_PAGES:
             url, depth = queue.pop(0)

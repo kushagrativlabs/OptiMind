@@ -154,7 +154,11 @@ const formatDuration = (seconds: number) => {
   return `${minutes}m ${Math.round(seconds % 60)}s`
 }
 
-const downloadConversationPdf = (messages: ChatMessage[], websiteName?: string) => {
+const downloadConversationPdf = (
+  messages: ChatMessage[],
+  websiteName?: string,
+  model?: string,
+) => {
   const safeText = (value: string) => value
     .normalize('NFKD')
     .replace(/[^\x20-\x7E\n]/g, '?')
@@ -175,34 +179,72 @@ const downloadConversationPdf = (messages: ChatMessage[], websiteName?: string) 
     return lines.length ? lines : ['']
   }
   const pdfText = (value: string) => normalizeMarkdown(value)
+    .replace(/⭐{4}/g, 'Critical')
+    .replace(/⭐{3}/g, 'High')
+    .replace(/⭐{2}/g, 'Medium')
+    .replace(/⭐/g, 'Low')
     .replace(/```[^\n]*\n?/g, '')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
     .replace(/(\*\*|__)(.*?)\1/g, '$2')
     .replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|$)/gm, '$1$2')
+    .replace(/[*_]+/g, '')
     .replace(/^\s*>\s?/gm, '')
     .replace(/^\s*#{1,6}\s+/gm, '')
+    .replace(/^\?+\s*/gm, '')
 
-  type ReportLine = { text: string; kind: 'title' | 'meta' | 'heading' | 'label' | 'body' }
+  type ReportLine = {
+    text: string
+    kind: 'title' | 'meta' | 'heading' | 'label' | 'body' | 'tableHeader' | 'tableRow'
+    cells?: string[]
+  }
+  const tableCells = (line: string) => line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((cell) => pdfText(cell.trim()))
+  const messageLines = (message: ChatMessage): ReportLine[] => {
+    const lines = message.content.split('\n')
+    const result: ReportLine[] = [
+      { text: `${message.role === 'assistant' ? 'OptiMind' : 'You'}:`, kind: 'label' },
+    ]
+    let tableStarted = false
+    lines.forEach((line, index) => {
+      const isTableLine = /^\s*\|.*\|\s*$/.test(line)
+      const isSeparator = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line)
+      if (isTableLine && !isSeparator) {
+        const cells = tableCells(line)
+        result.push({ text: '', cells, kind: tableStarted ? 'tableRow' : 'tableHeader' })
+        tableStarted = true
+        return
+      }
+      if (isSeparator && tableStarted) return
+      tableStarted = false
+      const heading = line.match(/^#{1,3}\s+(.+)/)?.[1]
+      const cleanedHeading = heading ? pdfText(heading).replace(/^[^A-Za-z0-9]+/, '') : null
+      result.push(...wrap(cleanedHeading ?? pdfText(line)).map((text) => ({
+        text,
+        kind: heading ? 'heading' as const : 'body' as const,
+      })))
+      if (index < lines.length - 1 && line.trim() === '') result.push({ text: '', kind: 'body' })
+    })
+    result.push({ text: '', kind: 'body' })
+    return result
+  }
+  const auditMessages = messages.filter((message) => message.role === 'assistant').slice(-1)
+  const reportDate = new Date().toLocaleString()
   const contentLines: ReportLine[] = [
     { text: 'OptiMind Website Audit Report', kind: 'title' },
     { text: websiteName ? `Website: ${websiteName}` : 'Website workspace report', kind: 'meta' },
-    { text: `Generated: ${new Date().toLocaleString()}`, kind: 'meta' },
+    { text: 'SEO · AEO · GEO review', kind: 'meta' },
+    { text: model ? `Model: ${model}` : 'Model: local AI', kind: 'meta' },
+    { text: `Generated: ${reportDate}`, kind: 'meta' },
+    { text: 'This report contains verified observations from the website crawl followed by recommended actions.', kind: 'body' },
     { text: '', kind: 'body' },
-    ...messages.flatMap((message) => [
-      { text: `${message.role === 'assistant' ? 'OptiMind' : 'You'}:`, kind: 'label' as const },
-      ...message.content.split('\n').flatMap((line) => {
-        const heading = line.match(/^#{1,3}\s+(.+)/)?.[1]
-        return wrap(heading ? pdfText(heading) : pdfText(line)).map((text) => ({
-          text,
-          kind: heading ? 'heading' as const : 'body' as const,
-        }))
-      }),
-      { text: '', kind: 'body' as const },
-    ]),
+    ...auditMessages.flatMap(messageLines),
   ]
-  const pageLines = Array.from({ length: Math.ceil(contentLines.length / 46) }, (_, index) =>
-    contentLines.slice(index * 46, (index + 1) * 46),
+  const pageLines = Array.from({ length: Math.ceil(contentLines.length / 30) }, (_, index) =>
+    contentLines.slice(index * 30, (index + 1) * 30),
   )
   const objects: string[] = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -216,24 +258,39 @@ const downloadConversationPdf = (messages: ChatMessage[], websiteName?: string) 
     pageObjectIds.push(objects.length + 1)
     objects.push('')
     contentObjectIds.push(objects.length + 1)
+    let currentY = 744
     const textCommands = lines.map((line) => {
+      if (line.cells) {
+        const columnWidth = 516 / line.cells.length
+        const rowHeight = line.kind === 'tableHeader' ? 24 : 34
+        const top = currentY + 4
+        const fill = line.kind === 'tableHeader' ? '0.86 0.93 0.89 rg' : '0.97 0.98 0.97 rg'
+        const cells = line.cells.map((cell, cellIndex) => {
+          const x = 48 + cellIndex * columnWidth
+          const text = wrap(cell, 24).slice(0, 2)
+          const cellText = text.map((value, textIndex) =>
+            `0.12 0.16 0.15 rg BT /F${line.kind === 'tableHeader' ? '2' : '1'} 8 Tf ${x + 5} ${top - 13 - textIndex * 9} Td (${value.replace(/[\\()]/g, '\\$&')}) Tj ET`,
+          ).join('\n')
+          return `${fill}\n${x} ${top - rowHeight} ${columnWidth} ${rowHeight} re f\n0.78 0.84 0.80 RG 0.5 w ${x} ${top - rowHeight} ${columnWidth} ${rowHeight} re S\n${cellText}`
+        }).join('\n')
+        currentY -= rowHeight + 5
+        return cells
+      }
       const font = line.kind === 'title' || line.kind === 'heading' || line.kind === 'label' ? 'F2' : 'F1'
       const size = line.kind === 'title' ? 20 : line.kind === 'heading' ? 12 : 10
       const color = line.kind === 'heading' ? '0.18 0.42 0.34 rg' : '0.12 0.16 0.15 rg'
-      return `${color}\n/${font} ${size} Tf\n(${line.text.replace(/[\\()]/g, '\\$&')}) Tj\n0 -14 Td`
+      const command = `${color}\nBT\n/${font} ${size} Tf\n48 ${currentY} Td\n(${line.text.replace(/[\\()]/g, '\\$&')}) Tj\nET`
+      currentY -= line.kind === 'title' ? 26 : 14
+      return command
     }).join('\n')
     const stream = [
       'q',
       '0.12 0.34 0.27 rg',
       '0 770 612 22 re f',
       'Q',
-      'BT',
-      '48 744 Td',
       textCommands,
-      '0.45 0.50 0.47 rg',
-      '/F1 8 Tf',
-      `0 -8 Td (OptiMind  |  Website audit  |  Page ${pageIndex + 1} of ${pageLines.length}) Tj`,
-      'ET',
+      '0.45 0.50 0.47 rg BT /F1 8 Tf 48 28 Td',
+      `(OptiMind  |  Website audit  |  Page ${pageIndex + 1} of ${pageLines.length}) Tj ET`,
     ].join('\n')
     objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
   })
@@ -652,7 +709,13 @@ function App() {
   }
 
   const stopGeneration = () => {
-    activeRequestRef.current?.abort()
+    const controller = activeRequestRef.current
+    if (!controller) return
+    controller.abort()
+    setIsSending(false)
+    setIsStreaming(false)
+    setActiveActivities([])
+    activeActivitiesRef.current = []
   }
 
   const showGlobalConversation = () => {
@@ -670,7 +733,11 @@ function App() {
     startConversation()
     setDraft(
       `Review ${website.url}. Summarize its main pages, verify its content and SEO/AEO/GEO issues, ` +
-      'then provide prioritized, actionable recommendations with the exact changes to make.',
+      'then provide a full report with dedicated sections for SEO, AEO (answer-engine visibility), ' +
+      'and GEO (generative-engine visibility). For each section include verified findings, impact, ' +
+      'and prioritized recommendations with the exact changes to make. Include a dedicated ' +
+      'page-by-page audit for every crawled URL: page URL, title, meta description, canonical, ' +
+      'robots, headings, schema, image/alt-text status, key content, problems, and fixes.',
     )
     setView('conversation')
     setRouteConversationId(null)
@@ -861,8 +928,8 @@ function App() {
             <button
               className="theme-toggle"
               disabled={messages.length < 2 || isSending}
-              onClick={() => downloadConversationPdf(messages, activeWebsite?.name)}
-              title="Download this audit as a PDF"
+              onClick={() => downloadConversationPdf(messages, activeWebsite?.name, selectedModel)}
+              title="Download the SEO, AEO, and GEO audit as a PDF"
               type="button"
             >
               <span aria-hidden="true">⇩</span>

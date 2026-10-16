@@ -226,6 +226,10 @@ export const streamChat = async (
   if (!response.body) throw new Error('The browser could not read the response stream.')
 
   const reader = response.body.getReader()
+  const cancelReader = () => {
+    void reader.cancel().catch(() => undefined)
+  }
+  signal?.addEventListener('abort', cancelReader, { once: true })
   const decoder = new TextDecoder()
   let buffer = ''
   let tokenBuffer = ''
@@ -275,6 +279,8 @@ export const streamChat = async (
     }
     processLine(buffer)
   } finally {
+    signal?.removeEventListener('abort', cancelReader)
+    await reader.cancel().catch(() => undefined)
     flushTokens()
   }
 }

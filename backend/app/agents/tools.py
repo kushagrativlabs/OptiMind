@@ -6,7 +6,12 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from app.schemas.chat import AgentActivity, ChatMessage
-from app.services.web_scraper import WebScrapeError, extract_urls, web_scraper
+from app.services.web_scraper import (
+    MAX_SITE_PAGES,
+    WebScrapeError,
+    extract_urls,
+    web_scraper,
+)
 from app.services.web_search import WebSearchError, web_search_service
 
 WEBSITE_TASK_PATTERN = re.compile(
@@ -152,7 +157,14 @@ async def _crawl_website(input_data: BaseModel) -> ToolResult:
             ToolSource(url=page.url, title=page.title, content=page_source_content(page))
             for page in pages
         ],
-        detail=f"Read {len(pages)} page{'s' if len(pages) != 1 else ''} from the website.",
+        detail=(
+            f"Read {len(pages)} page{'s' if len(pages) != 1 else ''} from the website."
+            + (
+                f" The safety ceiling is {MAX_SITE_PAGES} pages."
+                if len(pages) >= MAX_SITE_PAGES
+                else ""
+            )
+        ),
     )
 
 
