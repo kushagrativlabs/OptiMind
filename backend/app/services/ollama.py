@@ -119,7 +119,10 @@ class OllamaService:
                 ),
                 "stream": False,
                 "keep_alive": settings.ollama_keep_alive,
-                "options": {"num_ctx": settings.ollama_num_ctx},
+                "options": {
+                    "num_ctx": settings.ollama_num_ctx,
+                    "num_predict": settings.ollama_num_predict,
+                },
             }
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(f"{self.base_url}/api/chat", json=payload)
@@ -186,7 +189,10 @@ class OllamaService:
                 ),
                 "stream": True,
                 "keep_alive": settings.ollama_keep_alive,
-                "options": {"num_ctx": settings.ollama_num_ctx},
+                "options": {
+                    "num_ctx": settings.ollama_num_ctx,
+                    "num_predict": settings.ollama_num_predict,
+                },
             }
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(

@@ -546,6 +546,11 @@ class WebScraper:
                 page = await self.scrape(url)
             except WebScrapeError:
                 continue
+            page_key = _page_key(page.url)
+            duplicate_page = any(_page_key(existing.url) == page_key for existing in pages)
+            if page_key in visited or duplicate_page:
+                continue
+            visited.add(page_key)
             pages.append(page)
             if depth < MAX_CRAWL_DEPTH:
                 for link in page.links:
