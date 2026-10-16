@@ -43,6 +43,7 @@ async def get_conversation(
         id=conversation.id,
         title=conversation.title,
         model=conversation.model,
+        website_id=conversation.website_id,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         messages=list(result),

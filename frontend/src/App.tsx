@@ -1,4 +1,4 @@
-import { Children, FormEvent, isValidElement, ReactNode, useEffect, useRef, useState } from 'react'
+import { Children, FormEvent, isValidElement, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { WebsitesPage } from './components/WebsitesPage'
@@ -115,6 +115,19 @@ const normalizeMarkdown = (content: string) => {
     .replace(/\\\((.*?)\\\)/g, '($1)')
 }
 
+const routeFromHash = () => {
+  const hash = window.location.hash
+  if (hash === '#websites') {
+    return { view: 'websites' as const, conversationId: null }
+  }
+
+  const match = hash.match(/^#chat\/([^/]+)$/)
+  return {
+    view: 'conversation' as const,
+    conversationId: match?.[1] ?? null,
+  }
+}
+
 const MessageText = ({ content }: { content: string }) => {
   return (
     <div className="message-content">
@@ -139,6 +152,111 @@ const formatDuration = (seconds: number) => {
   if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
   const minutes = Math.floor(seconds / 60)
   return `${minutes}m ${Math.round(seconds % 60)}s`
+}
+
+const downloadConversationPdf = (messages: ChatMessage[], websiteName?: string) => {
+  const safeText = (value: string) => value
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E\n]/g, '?')
+  const wrap = (value: string, width = 92) => {
+    const words = safeText(value).split(/\s+/)
+    const lines: string[] = []
+    let line = ''
+    for (const word of words) {
+      if (!word) continue
+      if (line && `${line} ${word}`.length > width) {
+        lines.push(line)
+        line = word
+      } else {
+        line = line ? `${line} ${word}` : word
+      }
+    }
+    if (line) lines.push(line)
+    return lines.length ? lines : ['']
+  }
+  const pdfText = (value: string) => normalizeMarkdown(value)
+    .replace(/```[^\n]*\n?/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|$)/gm, '$1$2')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*#{1,6}\s+/gm, '')
+
+  type ReportLine = { text: string; kind: 'title' | 'meta' | 'heading' | 'label' | 'body' }
+  const contentLines: ReportLine[] = [
+    { text: 'OptiMind Website Audit Report', kind: 'title' },
+    { text: websiteName ? `Website: ${websiteName}` : 'Website workspace report', kind: 'meta' },
+    { text: `Generated: ${new Date().toLocaleString()}`, kind: 'meta' },
+    { text: '', kind: 'body' },
+    ...messages.flatMap((message) => [
+      { text: `${message.role === 'assistant' ? 'OptiMind' : 'You'}:`, kind: 'label' as const },
+      ...message.content.split('\n').flatMap((line) => {
+        const heading = line.match(/^#{1,3}\s+(.+)/)?.[1]
+        return wrap(heading ? pdfText(heading) : pdfText(line)).map((text) => ({
+          text,
+          kind: heading ? 'heading' as const : 'body' as const,
+        }))
+      }),
+      { text: '', kind: 'body' as const },
+    ]),
+  ]
+  const pageLines = Array.from({ length: Math.ceil(contentLines.length / 46) }, (_, index) =>
+    contentLines.slice(index * 46, (index + 1) * 46),
+  )
+  const objects: string[] = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
+  ]
+  const pageObjectIds: number[] = []
+  const contentObjectIds: number[] = []
+  pageLines.forEach((lines, pageIndex) => {
+    pageObjectIds.push(objects.length + 1)
+    objects.push('')
+    contentObjectIds.push(objects.length + 1)
+    const textCommands = lines.map((line) => {
+      const font = line.kind === 'title' || line.kind === 'heading' || line.kind === 'label' ? 'F2' : 'F1'
+      const size = line.kind === 'title' ? 20 : line.kind === 'heading' ? 12 : 10
+      const color = line.kind === 'heading' ? '0.18 0.42 0.34 rg' : '0.12 0.16 0.15 rg'
+      return `${color}\n/${font} ${size} Tf\n(${line.text.replace(/[\\()]/g, '\\$&')}) Tj\n0 -14 Td`
+    }).join('\n')
+    const stream = [
+      'q',
+      '0.12 0.34 0.27 rg',
+      '0 770 612 22 re f',
+      'Q',
+      'BT',
+      '48 744 Td',
+      textCommands,
+      '0.45 0.50 0.47 rg',
+      '/F1 8 Tf',
+      `0 -8 Td (OptiMind  |  Website audit  |  Page ${pageIndex + 1} of ${pageLines.length}) Tj`,
+      'ET',
+    ].join('\n')
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
+  })
+  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`
+  pageObjectIds.forEach((id, index) => {
+    objects[id - 1] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectIds[index]} 0 R >>`
+  })
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length)
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  pdf += offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+  const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${(websiteName || 'optimind-website-audit').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 const MessageMetrics = ({ metrics }: { metrics?: ChatMessage['metrics'] }) => {
@@ -192,9 +310,8 @@ const ActivityLog = ({
 }
 
 function App() {
-  const [view, setView] = useState<'conversation' | 'websites'>(
-    () => window.location.hash === '#websites' ? 'websites' : 'conversation',
-  )
+  const initialRoute = routeFromHash()
+  const [view, setView] = useState<'conversation' | 'websites'>(initialRoute.view)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('optimind-theme')
     if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
@@ -210,6 +327,9 @@ function App() {
   const [websites, setWebsites] = useState<Website[]>([])
   const [activeWebsiteId, setActiveWebsiteId] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
+  const [routeConversationId, setRouteConversationId] = useState<string | null>(
+    initialRoute.conversationId,
+  )
   const [draft, setDraft] = useState('')
   const [attachedImages, setAttachedImages] = useState<ChatImage[]>([])
   const [isSending, setIsSending] = useState(false)
@@ -222,6 +342,7 @@ function App() {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const composerFormRef = useRef<HTMLFormElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const activeRequestRef = useRef<AbortController | null>(null)
   const activeActivitiesRef = useRef<AgentActivity[]>([])
@@ -294,11 +415,17 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const updateView = () => {
-      setView(window.location.hash === '#websites' ? 'websites' : 'conversation')
+    const updateRoute = () => {
+      const route = routeFromHash()
+      setView(route.view)
+      setRouteConversationId(route.conversationId)
     }
-    window.addEventListener('hashchange', updateView)
-    return () => window.removeEventListener('hashchange', updateView)
+    window.addEventListener('hashchange', updateRoute)
+    window.addEventListener('popstate', updateRoute)
+    return () => {
+      window.removeEventListener('hashchange', updateRoute)
+      window.removeEventListener('popstate', updateRoute)
+    }
   }, [])
 
   useEffect(() => {
@@ -348,7 +475,7 @@ function App() {
     requestAnimationFrame(() => composerRef.current?.focus())
   }
 
-  const openConversation = async (id: string) => {
+  const openConversation = useCallback(async (id: string) => {
     if (isSending) return
     setError(null)
 
@@ -359,7 +486,8 @@ function App() {
       setActiveWebsiteId(conversation.website_id)
       setMessages([initialMessage, ...conversation.messages])
       setView('conversation')
-      window.history.pushState(null, '', '#conversation')
+      setRouteConversationId(conversation.id)
+      window.history.pushState(null, '', `#chat/${conversation.id}`)
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -367,7 +495,15 @@ function App() {
           : 'Could not load that conversation.',
       )
     }
-  }
+  }, [isSending])
+
+  useEffect(() => {
+    if (!routeConversationId || routeConversationId === conversationId || isSending) return
+    const timer = window.setTimeout(() => {
+      void openConversation(routeConversationId)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [routeConversationId, conversationId, isSending, openConversation])
 
   const removeConversation = async (conversation: ConversationSummary) => {
     if (isSending || deletingConversationId) return
@@ -491,7 +627,12 @@ function App() {
       )
       await refreshConversations()
     } catch (requestError) {
-      if (requestError instanceof Error && requestError.name === 'AbortError') {
+      // Leaving the page, switching conversations, or pressing Stop intentionally
+      // aborts the request. Browser fetch can report this as AbortError or TypeError.
+      if (
+        controller.signal.aborted ||
+        (requestError instanceof Error && requestError.name === 'AbortError')
+      ) {
         await refreshConversations()
         return
       }
@@ -518,15 +659,23 @@ function App() {
     setActiveWebsiteId(null)
     startConversation()
     setView('conversation')
+    setRouteConversationId(null)
     window.history.pushState(null, '', '#conversation')
   }
 
   const openWebsiteWorkspace = (website: Website) => {
     setActiveWebsiteId(website.id)
     setSelectedModel(website.model)
+    setImageMode(false)
     startConversation()
+    setDraft(
+      `Review ${website.url}. Summarize its main pages, verify its content and SEO/AEO/GEO issues, ` +
+      'then provide prioritized, actionable recommendations with the exact changes to make.',
+    )
     setView('conversation')
+    setRouteConversationId(null)
     window.history.pushState(null, '', '#conversation')
+    requestAnimationFrame(() => composerFormRef.current?.requestSubmit())
   }
 
   const copyMessage = async (content: string, index: number) => {
@@ -594,6 +743,7 @@ function App() {
           onClick={() => {
             startConversation()
             setView('conversation')
+            setRouteConversationId(null)
             window.history.pushState(null, '', '#conversation')
           }}
         >
@@ -708,6 +858,16 @@ function App() {
             )}
           </div>
           <div className="topbar-actions">
+            <button
+              className="theme-toggle"
+              disabled={messages.length < 2 || isSending}
+              onClick={() => downloadConversationPdf(messages, activeWebsite?.name)}
+              title="Download this audit as a PDF"
+              type="button"
+            >
+              <span aria-hidden="true">⇩</span>
+              <strong>PDF</strong>
+            </button>
             <button
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
               className="theme-toggle"
@@ -835,7 +995,7 @@ function App() {
 
           <div className="composer-wrap">
             {error && <div className="error-banner">{error}</div>}
-            <form className="composer" onSubmit={submit}>
+            <form className="composer" onSubmit={submit} ref={composerFormRef}>
               {attachedImages.length > 0 && (
                 <div className="attachment-tray">
                   {attachedImages.map((image, index) => (
