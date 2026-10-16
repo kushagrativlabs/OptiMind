@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit, urlunsplit
+from xml.etree import ElementTree
 
 import httpx
 
@@ -272,6 +273,16 @@ def _can_crawl(root_url: str, candidate_url: str) -> bool:
     return not any(path.endswith(extension) for extension in SKIPPED_EXTENSIONS)
 
 
+def _page_key(url: str) -> str:
+    """Return a stable identity for a page across slash/www variants."""
+    parsed = urlsplit(url)
+    hostname = (parsed.hostname or "").lower().removeprefix("www.")
+    port = parsed.port
+    netloc = hostname if port is None else f"{hostname}:{port}"
+    path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((parsed.scheme.lower(), netloc, path, "", ""))
+
+
 def _is_public_address(address: str) -> bool:
     ip = ipaddress.ip_address(address)
     return not (
@@ -378,31 +389,174 @@ class WebScraper:
         self._cache[requested_url] = (time.monotonic(), page)
         return page
 
+    async def sitemap_urls(self, root_url: str) -> list[str]:
+        """Find same-domain page URLs exposed through common XML sitemaps."""
+        parsed = urlsplit(root_url)
+        base = urlunsplit((parsed.scheme, parsed.netloc, "/", "", ""))
+        candidates = [
+            urljoin(base, "robots.txt"),
+            urljoin(base, "sitemap.xml"),
+            urljoin(base, "wp-sitemap.xml"),
+        ]
+        sitemap_candidates: list[str] = []
+        seen_candidates: set[str] = set()
+        timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+        try:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                for candidate in candidates:
+                    response = await client.get(candidate)
+                    if response.status_code >= 400:
+                        continue
+                    content_type = response.headers.get("content-type", "").lower()
+                    body = response.text[:1_000_000]
+                    if candidate.endswith("robots.txt"):
+                        for line in body.splitlines():
+                            if line.lower().startswith("sitemap:"):
+                                sitemap = line.split(":", 1)[1].strip()
+                                if sitemap and sitemap not in seen_candidates:
+                                    sitemap_candidates.append(sitemap)
+                                    seen_candidates.add(sitemap)
+                    elif "xml" in content_type or body.lstrip().startswith("<"):
+                        if candidate not in seen_candidates:
+                            sitemap_candidates.append(candidate)
+                            seen_candidates.add(candidate)
+
+                urls: list[str] = []
+                seen_urls: set[str] = set()
+                pending = sitemap_candidates[:8]
+                seen_sitemaps: set[str] = set()
+                while pending and len(urls) < MAX_SITE_PAGES:
+                    sitemap = pending.pop(0)
+                    if sitemap in seen_sitemaps:
+                        continue
+                    seen_sitemaps.add(sitemap)
+                    response = await client.get(sitemap)
+                    if response.status_code >= 400:
+                        continue
+                    try:
+                        document = ElementTree.fromstring(response.text[:2_000_000])
+                    except ElementTree.ParseError:
+                        continue
+                    for node in document.iter():
+                        if not node.tag.endswith("loc") or not node.text:
+                            continue
+                        location = urlunsplit((*urlsplit(node.text.strip())[:3], "", ""))
+                        if location.endswith(".xml"):
+                            if location not in seen_sitemaps and len(pending) < 20:
+                                pending.append(location)
+                        elif location not in seen_urls and _can_crawl(root_url, location):
+                            urls.append(location)
+                            seen_urls.add(location)
+                            if len(urls) >= MAX_SITE_PAGES:
+                                break
+                return urls
+        except (httpx.HTTPError, OSError, ValueError):
+            return []
+
+    async def wordpress_page_urls(self, root_url: str) -> list[str]:
+        """Discover published WordPress pages through the REST API when available.
+
+        The API is used only as an URL inventory. Each URL is still fetched from
+        the public page so the audit uses the rendered HTML metadata and content.
+        Sites without a public REST API simply return no results and use the
+        normal sitemap/link crawl.
+        """
+        parsed = urlsplit(root_url)
+        origin = urlunsplit((parsed.scheme, parsed.netloc, "/", "", ""))
+        candidates = [
+            urljoin(origin, "wp-json/wp/v2/pages"),
+            urljoin(root_url, "wp-json/wp/v2/pages"),
+        ]
+        timeout = httpx.Timeout(connect=5.0, read=12.0, write=5.0, pool=5.0)
+        headers = {"User-Agent": "OptiMind/0.1 (+local website analysis)"}
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                headers=headers,
+                follow_redirects=True,
+            ) as client:
+                for endpoint in dict.fromkeys(candidates):
+                    urls: list[str] = []
+                    seen: set[str] = set()
+                    for page_number in range(1, MAX_SITE_PAGES + 1):
+                        response = await client.get(
+                            endpoint,
+                            params={
+                                "per_page": min(100, MAX_SITE_PAGES),
+                                "page": page_number,
+                                "_fields": "link",
+                                "status": "publish",
+                            },
+                        )
+                        if response.status_code in {400, 401, 403, 404}:
+                            break
+                        response.raise_for_status()
+                        payload = response.json()
+                        if not isinstance(payload, list) or not payload:
+                            break
+                        for item in payload:
+                            if not isinstance(item, dict) or not isinstance(item.get("link"), str):
+                                continue
+                            location = urlunsplit((*urlsplit(item["link"].strip())[:3], "", ""))
+                            key = _page_key(location)
+                            if key not in seen and _can_crawl(root_url, location):
+                                urls.append(location)
+                                seen.add(key)
+                                if len(urls) >= MAX_SITE_PAGES:
+                                    return urls
+                        total_pages = int(response.headers.get("X-WP-TotalPages", page_number))
+                        if page_number >= total_pages or len(payload) < min(100, MAX_SITE_PAGES):
+                            break
+                    if urls:
+                        return urls
+        except (httpx.HTTPError, OSError, ValueError, TypeError):
+            return []
+        return []
+
     async def scrape_site(self, requested_url: str) -> list[WebPage]:
         root = await self.scrape(requested_url)
         pages = [root]
-        visited = {root.url}
+        visited = {_page_key(root.url)}
         queue = []
-        for link in root.links:
-            if link not in visited and _can_crawl(root.url, link):
+        queued: set[str] = set()
+        for link in await self.wordpress_page_urls(root.url):
+            key = _page_key(link)
+            if key not in visited and key not in queued:
                 queue.append((link, 1))
+                queued.add(key)
+        for link in await self.sitemap_urls(root.url):
+            key = _page_key(link)
+            if key not in visited and key not in queued:
+                queue.append((link, 1))
+                queued.add(key)
+        for link in root.links:
+            key = _page_key(link)
+            if key not in visited and key not in queued and _can_crawl(root.url, link):
+                queue.append((link, 1))
+                queued.add(key)
 
         while queue and len(pages) < MAX_SITE_PAGES:
             url, depth = queue.pop(0)
-            if url in visited or depth > MAX_CRAWL_DEPTH:
+            key = _page_key(url)
+            if key in visited or depth > MAX_CRAWL_DEPTH:
                 continue
-            visited.add(url)
+            visited.add(key)
             try:
                 page = await self.scrape(url)
             except WebScrapeError:
                 continue
             pages.append(page)
             if depth < MAX_CRAWL_DEPTH:
-                queue.extend(
-                    (link, depth + 1)
-                    for link in page.links
-                    if link not in visited and _can_crawl(root.url, link)
-                )
+                for link in page.links:
+                    link_key = _page_key(link)
+                    if (
+                        link_key not in visited
+                        and link_key not in queued
+                        and _can_crawl(root.url, link)
+                    ):
+                        queue.append((link, depth + 1))
+                        queued.add(link_key)
         return pages
 
     async def pages_from_messages(self, messages: list[object]) -> list[WebPage]:
@@ -423,9 +577,10 @@ class WebScraper:
         seen: set[str] = set()
         for url in urls:
             for page in await self.scrape_site(url):
-                if page.url not in seen:
+                key = _page_key(page.url)
+                if key not in seen:
                     pages.append(page)
-                    seen.add(page.url)
+                    seen.add(key)
                 if len(pages) == MAX_SITE_PAGES:
                     return pages
         return pages

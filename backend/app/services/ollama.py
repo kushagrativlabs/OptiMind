@@ -253,8 +253,12 @@ class OllamaService:
 
         source_parts: list[str] = []
         remaining = MAX_WEB_CONTEXT_CHARACTERS
+        seen_source_urls: set[str] = set()
         for result in results:
             for item in result.sources:
+                if item.url in seen_source_urls:
+                    continue
+                seen_source_urls.add(item.url)
                 header = (
                     f"TOOL: {result.call.name}\nSOURCE URL: {item.url}\n"
                     f"TITLE: {item.title}\nCONTENT:\n"
@@ -289,10 +293,12 @@ class OllamaService:
             "worthiness, topical authority, and quotable content where supported. Cite "
             "supporting sources as Markdown links using their exact URLs. Also include a "
             "page-by-page audit for every crawled page. Do not collapse pages into one "
-            "aggregate: for each page report its URL, title, meta description, canonical, "
-            "robots, headings, JSON-LD/schema, image and missing-alt counts, key content, "
-            "verified problems, and recommended fixes. If a field is not in the evidence, "
-            "write NOT FOUND rather than guessing. "
+            "aggregate. Start every page section with a heading exactly like `Page: "
+            "<full URL>`, then include Checks, Issues, and Recommended fixes subsections. "
+            "For each page report its URL, title, meta description, canonical, robots, "
+            "headings, JSON-LD/schema, image and missing-alt counts, key content, verified "
+            "problems, and recommended fixes. If a field is not in the evidence, write "
+            "NOT FOUND rather than guessing. "
                 "For audits, report only pages, metadata, headings, images, and JSON-LD "
                 "shown in the supplied evidence. Do not invent pages or claim a tag is "
                 "missing unless the evidence explicitly says NOT FOUND. Clearly separate "

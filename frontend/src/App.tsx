@@ -736,8 +736,10 @@ function App() {
       'then provide a full report with dedicated sections for SEO, AEO (answer-engine visibility), ' +
       'and GEO (generative-engine visibility). For each section include verified findings, impact, ' +
       'and prioritized recommendations with the exact changes to make. Include a dedicated ' +
-      'page-by-page audit for every crawled URL: page URL, title, meta description, canonical, ' +
-      'robots, headings, schema, image/alt-text status, key content, problems, and fixes.',
+      'page-by-page audit for every crawled URL. Use a heading `Page: <full URL>` for every page, ' +
+      'followed by separate Checks, Issues, and Recommended fixes subsections. Include the page ' +
+      'title, meta description, canonical, robots, headings, schema, image/alt-text status, and ' +
+      'key content in its page section.',
     )
     setView('conversation')
     setRouteConversationId(null)

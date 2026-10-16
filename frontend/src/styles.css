@@ -40,6 +40,19 @@ button {
   cursor: pointer;
 }
 
+button,
+a,
+select,
+textarea {
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease,
+    box-shadow 160ms ease, transform 160ms ease;
+}
+
+:where(button, a, select, textarea):focus-visible {
+  outline: 3px solid rgba(151, 185, 77, 0.45);
+  outline-offset: 2px;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
@@ -290,8 +303,9 @@ button {
   min-height: 0;
   overflow: hidden;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.62)),
-    radial-gradient(circle at 80% 10%, #e6ecd7, transparent 25%),
+    linear-gradient(rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.58)),
+    radial-gradient(circle at 82% 0%, rgba(219, 242, 103, 0.23), transparent 24%),
+    radial-gradient(circle at 18% 48%, rgba(205, 224, 210, 0.36), transparent 30%),
     #f2f4ef;
 }
 
@@ -301,7 +315,10 @@ button {
   justify-content: space-between;
   min-height: 95px;
   padding: 20px 42px;
-  border-bottom: 1px solid #dce1da;
+  background: rgba(255, 255, 255, 0.46);
+  border-bottom: 1px solid rgba(220, 225, 218, 0.86);
+  box-shadow: 0 8px 24px rgba(35, 55, 42, 0.04);
+  backdrop-filter: blur(18px);
 }
 
 .eyebrow {
@@ -515,6 +532,13 @@ h1 {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid #dfe3dd;
   border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(39, 58, 45, 0.045);
+}
+
+.message.user:hover {
+  border-color: #cbd6c8;
+  box-shadow: 0 12px 28px rgba(39, 58, 45, 0.08);
+  transform: translateY(-1px);
 }
 
 .message-body { min-width: 0; }
@@ -680,6 +704,12 @@ h1 {
   color: #1c2923;
   font-family: 'Manrope', sans-serif;
   line-height: 1.3;
+}
+
+.message-content h1,
+.message-content h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid #dfe7da;
 }
 
 .message-content h1 { font-size: 20px; }
@@ -1209,7 +1239,9 @@ h1 {
 }
 
 :root[data-theme='dark'] .topbar {
+  background: rgba(16, 23, 19, 0.72);
   border-color: #2c3831;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
 
 :root[data-theme='dark'] h1,
@@ -1231,6 +1263,17 @@ h1 {
 :root[data-theme='dark'] .message.user {
   background: rgba(37, 49, 42, 0.78);
   border-color: #3a483f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme='dark'] .message.user:hover {
+  border-color: #506356;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme='dark'] .message-content h1,
+:root[data-theme='dark'] .message-content h2 {
+  border-color: #35453b;
 }
 
 :root[data-theme='dark'] .copy-message { color: #91a299; }
