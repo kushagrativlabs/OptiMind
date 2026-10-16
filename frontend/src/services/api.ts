@@ -49,8 +49,26 @@ export type ConversationSummary = {
   id: string
   title: string
   model: string
+  website_id: string | null
   created_at: string
   updated_at: string
+}
+
+export type Website = {
+  id: string
+  name: string
+  url: string
+  wordpress_api_url: string | null
+  model: string
+  created_at: string
+  updated_at: string
+}
+
+export type WebsiteConnectionResult = {
+  reachable: boolean
+  wordpress_detected: boolean
+  detail: string
+  checked_url: string
 }
 
 export type ConversationDetail = ConversationSummary & {
@@ -93,10 +111,40 @@ export const deleteConversation = async (conversationId: string) => {
   }
 }
 
+export const getWebsites = () => request<Website[]>('/api/v1/websites')
+
+export const createWebsite = (website: Pick<Website, 'name' | 'url' | 'model'>) =>
+  request<Website>('/api/v1/websites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(website),
+  })
+
+export const updateWebsite = (websiteId: string, updates: Partial<Pick<Website, 'name' | 'url' | 'model'>>) =>
+  request<Website>(`/api/v1/websites/${websiteId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+
+export const testWebsite = (websiteId: string) =>
+  request<WebsiteConnectionResult>(`/api/v1/websites/${websiteId}/test`, {
+    method: 'POST',
+  })
+
+export const deleteWebsite = async (websiteId: string) => {
+  const response = await fetch(`/api/v1/websites/${websiteId}`, { method: 'DELETE' })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Request failed (${response.status})`)
+  }
+}
+
 export const generateImage = (
   prompt: string,
   conversationModel: string,
   conversationId: string | null,
+  websiteId: string | null,
   signal?: AbortSignal,
 ) =>
   request<{ message: ChatMessage; model: string; conversation_id: string }>(
@@ -107,6 +155,7 @@ export const generateImage = (
       body: JSON.stringify({
         prompt,
         conversation_id: conversationId,
+        website_id: websiteId,
         conversation_model: conversationModel,
       }),
       signal,
@@ -151,6 +200,7 @@ export const streamChat = async (
   model: string,
   conversationId: string | null,
   webSearch: boolean,
+  websiteId: string | null,
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ) => {
@@ -161,6 +211,7 @@ export const streamChat = async (
       messages,
       model,
       conversation_id: conversationId,
+      website_id: websiteId,
       web_search: webSearch,
     }),
     signal,

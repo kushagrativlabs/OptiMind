@@ -58,6 +58,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=100)
     model: str | None = Field(default=None, min_length=1, max_length=200)
     conversation_id: UUID | None = None
+    website_id: UUID | None = None
     web_search: bool = False
 
 

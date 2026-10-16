@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.tools import AgentToolError, ToolResult, agent_tools
 from app.core.database import get_session, session_factory
-from app.models import Conversation, Message
+from app.models import Conversation, Message, Website
 from app.schemas.chat import AgentActivity, ChatRequest, ChatResponse, OllamaModel
 from app.services.ollama import (
     OllamaConnectionError,
@@ -26,10 +26,15 @@ def stream_event(event_type: str, **data: object) -> str:
 
 async def execute_tools(
     request: ChatRequest,
+    active_website_url: str | None = None,
 ) -> tuple[list[ToolResult], list[AgentActivity]]:
     results: list[ToolResult] = []
     activities: list[AgentActivity] = []
-    for call in agent_tools.plan(request.messages, request.web_search):
+    for call in agent_tools.plan(
+        request.messages,
+        request.web_search,
+        active_website_url,
+    ):
         try:
             result = await agent_tools.execute(call)
         except AgentToolError as exc:
@@ -38,6 +43,29 @@ async def execute_tools(
         results.append(result)
         activities.append(call.activity("completed", result.detail))
     return results, activities
+
+
+async def load_website(
+    website_id: object | None,
+    session: AsyncSession,
+) -> Website | None:
+    if website_id is None:
+        return None
+    website = await session.get(Website, website_id)
+    if website is None:
+        raise HTTPException(status_code=404, detail="Website not found.")
+    return website
+
+
+def website_prompt_context(website: Website | None) -> str | None:
+    if website is None:
+        return None
+    return (
+        f"Name: {website.name}\n"
+        f"Website URL: {website.url}\n"
+        f"WordPress REST API: {website.wordpress_api_url or 'Not configured'}\n"
+        f"Preferred model: {website.model}"
+    )
 
 
 @router.get("/models", response_model=list[OllamaModel])
@@ -56,7 +84,8 @@ async def chat(
     request: ChatRequest,
     session: AsyncSession = Depends(get_session),
 ) -> ChatResponse:
-    model = request.model or OllamaService().model
+    service = OllamaService()
+    model = request.model or service.model
     latest_user_message = next(
         (message for message in reversed(request.messages) if message.role == "user"),
         None,
@@ -68,8 +97,15 @@ async def chat(
         )
 
     if request.conversation_id is None:
+        website = await load_website(request.website_id, session)
+        if request.model is None and website is not None:
+            model = website.model
         title = " ".join(latest_user_message.content.split())[:80] or "New conversation"
-        conversation = Conversation(title=title, model=model)
+        conversation = Conversation(
+            title=title,
+            model=model,
+            website_id=website.id if website else None,
+        )
         session.add(conversation)
         await session.flush()
     else:
@@ -79,6 +115,14 @@ async def chat(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found.",
             )
+        website = await load_website(
+            request.website_id or conversation.website_id,
+            session,
+        )
+        if request.website_id is not None:
+            conversation.website_id = request.website_id
+        if request.model is None and website is not None:
+            model = website.model
         conversation.model = model
         conversation.updated_at = datetime.now(UTC)
 
@@ -93,12 +137,16 @@ async def chat(
     await session.flush()
 
     try:
-        tool_results, activities = await execute_tools(request)
-        response = await OllamaService().chat(
+        tool_results, activities = await execute_tools(
+            request,
+            website.url if website else None,
+        )
+        response = await service.chat(
             request.messages,
             model,
             use_web_search=request.web_search,
             tool_results=tool_results,
+            website_context=website_prompt_context(website),
         )
     except OllamaModelError as exc:
         raise HTTPException(
@@ -172,8 +220,15 @@ async def chat_stream(
         ) from exc
 
     if request.conversation_id is None:
+        website = await load_website(request.website_id, session)
+        if request.model is None and website is not None:
+            model = website.model
         title = " ".join(latest_user_message.content.split())[:80] or "New conversation"
-        conversation = Conversation(title=title, model=model)
+        conversation = Conversation(
+            title=title,
+            model=model,
+            website_id=website.id if website else None,
+        )
         session.add(conversation)
         await session.flush()
     else:
@@ -183,6 +238,14 @@ async def chat_stream(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found.",
             )
+        website = await load_website(
+            request.website_id or conversation.website_id,
+            session,
+        )
+        if request.website_id is not None:
+            conversation.website_id = request.website_id
+        if request.model is None and website is not None:
+            model = website.model
         conversation.model = model
         conversation.updated_at = datetime.now(UTC)
 
@@ -206,7 +269,11 @@ async def chat_stream(
             "meta", conversation_id=str(conversation_id), model=model
         )
         try:
-            calls = agent_tools.plan(request.messages, request.web_search)
+            calls = agent_tools.plan(
+                request.messages,
+                request.web_search,
+                website.url if website else None,
+            )
             for call in calls:
                 planned = call.activity("planned")
                 activities.append(planned)
@@ -242,6 +309,7 @@ async def chat_stream(
                 model,
                 use_web_search=request.web_search,
                 tool_results=tool_results,
+                website_context=website_prompt_context(website),
             ):
                 if event.content:
                     chunks.append(event.content)

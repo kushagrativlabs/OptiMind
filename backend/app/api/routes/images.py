@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_session
-from app.models import Conversation, Message
+from app.models import Conversation, Message, Website
 from app.schemas.chat import ChatMessage, GenerationMetrics
 from app.schemas.image_generation import ImageGenerationRequest, ImageGenerationResponse
 from app.services.image_generation import ImageGenerationError, image_generation_service
@@ -37,9 +37,20 @@ async def generate_image(
     metrics = GenerationMetrics(duration_seconds=round(perf_counter() - started_at, 2))
 
     if request.conversation_id is None:
+        website = (
+            await session.get(Website, request.website_id)
+            if request.website_id is not None
+            else None
+        )
+        if request.website_id is not None and website is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Website not found.",
+            )
         conversation = Conversation(
             title=f"Image: {' '.join(prompt.split())[:72]}",
             model=request.conversation_model,
+            website_id=website.id if website else None,
         )
         session.add(conversation)
         await session.flush()
@@ -50,6 +61,14 @@ async def generate_image(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found.",
             )
+        if request.website_id is not None:
+            website = await session.get(Website, request.website_id)
+            if website is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Website not found.",
+                )
+            conversation.website_id = website.id
         conversation.updated_at = datetime.now(UTC)
 
     session.add_all(

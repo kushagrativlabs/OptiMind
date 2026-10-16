@@ -1,3 +1,4 @@
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
@@ -7,6 +8,11 @@ from pydantic import BaseModel, Field, ValidationError
 from app.schemas.chat import AgentActivity, ChatMessage
 from app.services.web_scraper import WebScrapeError, extract_urls, web_scraper
 from app.services.web_search import WebSearchError, web_search_service
+
+WEBSITE_TASK_PATTERN = re.compile(
+    r"\b(?:analy[sz]e|audit|check|crawl|inspect|review|scan|seo|aeo|geo|summari[sz]e)\b",
+    re.IGNORECASE,
+)
 
 
 class AgentToolError(Exception):
@@ -166,7 +172,12 @@ class AgentTools:
             )
         )
 
-    def plan(self, messages: list[ChatMessage], use_web_search: bool) -> list[ToolCall]:
+    def plan(
+        self,
+        messages: list[ChatMessage],
+        use_web_search: bool,
+        active_website_url: str | None = None,
+    ) -> list[ToolCall]:
         latest_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
             "",
@@ -183,6 +194,13 @@ class AgentTools:
                     break
             if len(urls) == 2:
                 break
+
+        if (
+            not urls
+            and active_website_url
+            and WEBSITE_TASK_PATTERN.search(latest_user_message)
+        ):
+            urls.append(active_website_url)
 
         for index, url in enumerate(urls, start=1):
             calls.append(

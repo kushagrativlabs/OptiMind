@@ -7,16 +7,17 @@ testable, and isolated per project.
 
 ## Progress
 
-Phase 3 is currently **0/5 complete**.
+Phase 3 is **complete (5/5)** for public website profiles.
 
-- [ ] Add WordPress website management.
-- [ ] Store connection configurations safely.
-- [ ] Build website selection and context.
-- [ ] Implement connection testing.
-- [ ] Add website-specific AI conversations.
+- [x] Add WordPress website management.
+- [x] Store public connection configurations safely.
+- [x] Build website selection and context.
+- [x] Implement connection testing.
+- [x] Add website-specific AI conversations.
 
 ## First implementation slice
 
-Create website profiles containing public site and WordPress REST API URLs. Add
-CRUD APIs, connection health checks, and a website workspace in the frontend.
-Do not collect WordPress or SFTP passwords until encryption-at-rest is configured.
+Add encrypted WordPress application-password storage before enabling authenticated
+operations. Public site profiles, connection health checks, per-site model choices,
+website context, and website-specific conversations are implemented. SFTP remains
+part of Phase 5.

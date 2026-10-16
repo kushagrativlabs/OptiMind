@@ -12,6 +12,7 @@ class ConversationSummary(BaseModel):
     id: UUID
     title: str
     model: str
+    website_id: UUID | None
     created_at: datetime
     updated_at: datetime
 

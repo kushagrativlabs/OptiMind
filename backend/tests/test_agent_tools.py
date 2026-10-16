@@ -25,6 +25,18 @@ def test_agent_plan_skips_tools_for_local_chat() -> None:
     assert calls == []
 
 
+def test_agent_plan_uses_active_website_without_repeating_url() -> None:
+    calls = agent_tools.plan(
+        [ChatMessage(role="user", content="Audit this website for SEO problems")],
+        use_web_search=False,
+        active_website_url="https://example.com",
+    )
+
+    assert len(calls) == 1
+    assert calls[0].name == "crawl_website"
+    assert calls[0].arguments == {"url": "https://example.com"}
+
+
 @pytest.mark.asyncio
 async def test_registry_rejects_unknown_tools() -> None:
     with pytest.raises(AgentToolError, match="Unknown tool"):

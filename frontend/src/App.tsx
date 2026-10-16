@@ -1,6 +1,7 @@
 import { Children, FormEvent, isValidElement, ReactNode, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { WebsitesPage } from './components/WebsitesPage'
 import {
   AgentActivity,
   ChatMessage,
@@ -12,10 +13,12 @@ import {
   getConversations,
   getModels,
   getSystemStatus,
+  getWebsites,
   OllamaModel,
   streamChat,
   ServiceState,
   SystemStatus,
+  Website,
 } from './services/api'
 
 const initialMessage: ChatMessage = {
@@ -181,6 +184,9 @@ const ActivityLog = ({
 }
 
 function App() {
+  const [view, setView] = useState<'conversation' | 'websites'>(
+    () => window.location.hash === '#websites' ? 'websites' : 'conversation',
+  )
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('optimind-theme')
     if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
@@ -193,6 +199,8 @@ function App() {
   )
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage])
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [websites, setWebsites] = useState<Website[]>([])
+  const [activeWebsiteId, setActiveWebsiteId] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [attachedImages, setAttachedImages] = useState<ChatImage[]>([])
@@ -211,6 +219,10 @@ function App() {
   const activeActivitiesRef = useRef<AgentActivity[]>([])
   const selectedModelInfo = models.find((model) => model.name === selectedModel)
   const supportsVision = selectedModelInfo?.capabilities.includes('vision') ?? false
+  const activeWebsite = websites.find((website) => website.id === activeWebsiteId) ?? null
+  const visibleConversations = activeWebsiteId
+    ? conversations.filter((conversation) => conversation.website_id === activeWebsiteId)
+    : conversations
 
   const refreshStatus = async () => {
     try {
@@ -257,6 +269,28 @@ function App() {
     return () => {
       active = false
     }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    getWebsites()
+      .then((savedWebsites) => {
+        if (active) setWebsites(savedWebsites)
+      })
+      .catch(() => {
+        if (active) setWebsites([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const updateView = () => {
+      setView(window.location.hash === '#websites' ? 'websites' : 'conversation')
+    }
+    window.addEventListener('hashchange', updateView)
+    return () => window.removeEventListener('hashchange', updateView)
   }, [])
 
   useEffect(() => {
@@ -314,7 +348,10 @@ function App() {
       const conversation = await getConversation(id)
       setConversationId(conversation.id)
       setSelectedModel(conversation.model)
+      setActiveWebsiteId(conversation.website_id)
       setMessages([initialMessage, ...conversation.messages])
+      setView('conversation')
+      window.history.pushState(null, '', '#conversation')
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -373,6 +410,7 @@ function App() {
           content,
           selectedModel,
           conversationId,
+          activeWebsiteId,
           controller.signal,
         )
         setConversationId(result.conversation_id)
@@ -385,6 +423,7 @@ function App() {
         selectedModel,
         conversationId,
         webSearch,
+        activeWebsiteId,
         {
           onConversation: (nextConversationId) => {
             setConversationId(nextConversationId)
@@ -467,6 +506,21 @@ function App() {
     activeRequestRef.current?.abort()
   }
 
+  const showGlobalConversation = () => {
+    setActiveWebsiteId(null)
+    startConversation()
+    setView('conversation')
+    window.history.pushState(null, '', '#conversation')
+  }
+
+  const openWebsiteWorkspace = (website: Website) => {
+    setActiveWebsiteId(website.id)
+    setSelectedModel(website.model)
+    startConversation()
+    setView('conversation')
+    window.history.pushState(null, '', '#conversation')
+  }
+
   const copyMessage = async (content: string, index: number) => {
     try {
       await navigator.clipboard.writeText(content)
@@ -527,17 +581,40 @@ function App() {
           </div>
         </div>
 
-        <button className="new-chat" onClick={startConversation}>
+        <button
+          className="new-chat"
+          onClick={() => {
+            startConversation()
+            setView('conversation')
+            window.history.pushState(null, '', '#conversation')
+          }}
+        >
           <span>＋</span> New conversation
         </button>
 
         <nav aria-label="Workspace">
           <p className="nav-label">Workspace</p>
-          <a className="nav-item active" href="#conversation">
+          <a
+            className={`nav-item ${view === 'conversation' ? 'active' : ''}`}
+            href="#conversation"
+            onClick={(event) => {
+              event.preventDefault()
+              showGlobalConversation()
+            }}
+          >
             <span>◌</span> Conversation
           </a>
-          <a className="nav-item disabled" href="#websites" aria-disabled="true">
-            <span>◇</span> Websites <small>Phase 3</small>
+          <a
+            className={`nav-item ${view === 'websites' ? 'active' : ''}`}
+            href="#websites"
+            onClick={(event) => {
+              event.preventDefault()
+              setError(null)
+              setView('websites')
+              window.history.pushState(null, '', '#websites')
+            }}
+          >
+            <span>◇</span> Websites <small>{websites.length}</small>
           </a>
           <a className="nav-item disabled" href="#audits" aria-disabled="true">
             <span>⌁</span> Audits <small>Phase 4</small>
@@ -546,11 +623,11 @@ function App() {
 
         <section className="history" aria-label="Conversation history">
           <p className="nav-label">History</p>
-          {conversations.length === 0 ? (
+          {visibleConversations.length === 0 ? (
             <p className="history-empty">No saved conversations yet</p>
           ) : (
             <div className="history-list">
-              {conversations.map((conversation) => (
+              {visibleConversations.map((conversation) => (
                 <div
                   className={`history-item ${conversation.id === conversationId ? 'active' : ''}`}
                   key={conversation.id}
@@ -592,11 +669,35 @@ function App() {
         </div>
       </aside>
 
-      <main className="main" id="conversation">
+      <main className="main" id={view}>
+        {view === 'websites' ? (
+          <WebsitesPage
+            defaultModel={selectedModel}
+            error={error}
+            models={models}
+            onChange={setWebsites}
+            onError={setError}
+            onOpen={openWebsiteWorkspace}
+            websites={websites}
+          />
+        ) : (
+        <>
         <header className="topbar">
           <div>
             <p className="eyebrow">PRIVATE WORKSPACE</p>
             <h1>Website growth assistant</h1>
+            {activeWebsite && (
+              <button
+                className="active-website"
+                onClick={() => {
+                  setView('websites')
+                  window.history.pushState(null, '', '#websites')
+                }}
+                type="button"
+              >
+                <span>◇</span> {activeWebsite.name}
+              </button>
+            )}
           </div>
           <div className="topbar-actions">
             <button
@@ -812,6 +913,8 @@ function App() {
             </p>
           </div>
         </section>
+        </>
+        )}
       </main>
     </div>
   )
