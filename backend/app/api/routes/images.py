@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_session
 from app.models import Conversation, Message
-from app.schemas.chat import ChatMessage
+from app.schemas.chat import ChatMessage, GenerationMetrics
 from app.schemas.image_generation import ImageGenerationRequest, ImageGenerationResponse
 from app.services.image_generation import ImageGenerationError, image_generation_service
 
@@ -25,6 +26,7 @@ async def generate_image(
             detail="An image prompt is required.",
         )
 
+    started_at = perf_counter()
     try:
         image = await image_generation_service.generate(prompt)
     except ImageGenerationError as exc:
@@ -32,6 +34,7 @@ async def generate_image(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+    metrics = GenerationMetrics(duration_seconds=round(perf_counter() - started_at, 2))
 
     if request.conversation_id is None:
         conversation = Conversation(
@@ -62,6 +65,7 @@ async def generate_image(
                 role="assistant",
                 content=f"Generated locally with {settings.image_generation_model}.",
                 images=[image.model_dump()],
+                metrics=metrics.model_dump(),
             ),
         ]
     )
@@ -71,6 +75,7 @@ async def generate_image(
             role="assistant",
             content=f"Generated locally with {settings.image_generation_model}.",
             images=[image],
+            metrics=metrics,
         ),
         conversation_id=conversation.id,
         model=settings.image_generation_model,

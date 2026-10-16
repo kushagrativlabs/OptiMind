@@ -15,6 +15,13 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   images?: ChatImage[]
+  metrics?: GenerationMetrics | null
+}
+
+export type GenerationMetrics = {
+  duration_seconds: number
+  tokens_per_second?: number | null
+  output_tokens?: number | null
 }
 
 export type ChatImage = {
@@ -119,12 +126,13 @@ export const sendChat = (
 type ChatStreamEvent =
   | { type: 'meta'; conversation_id: string; model: string }
   | { type: 'token'; content: string }
-  | { type: 'done' }
+  | { type: 'done'; metrics?: GenerationMetrics | null }
   | { type: 'error'; detail: string }
 
 type ChatStreamHandlers = {
   onConversation: (conversationId: string, model: string) => void
   onToken: (content: string) => void
+  onMetrics: (metrics: GenerationMetrics) => void
 }
 
 export const streamChat = async (
@@ -184,6 +192,7 @@ export const streamChat = async (
       scheduleTokenFlush()
     } else if (event.type === 'done') {
       flushTokens()
+      if (event.metrics) handlers.onMetrics(event.metrics)
     } else if (event.type === 'error') {
       flushTokens()
       throw new Error(event.detail)

@@ -32,10 +32,17 @@ class ChatImage(BaseModel):
         return value
 
 
+class GenerationMetrics(BaseModel):
+    duration_seconds: float = Field(ge=0)
+    tokens_per_second: float | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=20_000)
     images: list[ChatImage] = Field(default_factory=list, max_length=3)
+    metrics: GenerationMetrics | None = None
 
 
 class ChatRequest(BaseModel):
@@ -48,6 +55,7 @@ class ChatRequest(BaseModel):
 class OllamaChatResponse(BaseModel):
     message: ChatMessage
     model: str
+    metrics: GenerationMetrics | None = None
 
 
 class ChatResponse(OllamaChatResponse):

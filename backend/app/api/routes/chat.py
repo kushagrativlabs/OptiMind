@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session, session_factory
 from app.models import Conversation, Message
 from app.schemas.chat import ChatRequest, ChatResponse, OllamaModel
-from app.services.ollama import OllamaConnectionError, OllamaModelError, OllamaService
+from app.services.ollama import (
+    OllamaConnectionError,
+    OllamaModelError,
+    OllamaService,
+    generation_metrics,
+)
 
 router = APIRouter()
 
@@ -93,6 +98,7 @@ async def chat(
             role="assistant",
             content=response.message.content,
             images=[],
+            metrics=(response.metrics.model_dump() if response.metrics else None),
         )
     )
     conversation.updated_at = datetime.now(UTC)
@@ -101,6 +107,7 @@ async def chat(
         message=response.message,
         model=response.model,
         conversation_id=conversation.id,
+        metrics=response.metrics,
     )
 
 
@@ -165,17 +172,27 @@ async def chat_stream(
 
     async def generate() -> AsyncIterator[str]:
         chunks: list[str] = []
+        metrics = None
         yield stream_event(
             "meta", conversation_id=str(conversation_id), model=model
         )
         try:
-            async for chunk in service.chat_stream(
+            async for event in service.chat_stream(
                 request.messages,
                 model,
                 use_web_search=request.web_search,
             ):
-                chunks.append(chunk)
-                yield stream_event("token", content=chunk)
+                if event.content:
+                    chunks.append(event.content)
+                    yield stream_event("token", content=event.content)
+                if event.done:
+                    metrics = generation_metrics(
+                        {
+                            "eval_count": event.eval_count,
+                            "eval_duration": event.eval_duration,
+                            "total_duration": event.total_duration,
+                        }
+                    )
 
             content = "".join(chunks).strip()
             if not content:
@@ -189,12 +206,16 @@ async def chat_stream(
                         role="assistant",
                         content=content,
                         images=[],
+                        metrics=(metrics.model_dump() if metrics else None),
                     )
                 )
                 if saved_conversation is not None:
                     saved_conversation.updated_at = datetime.now(UTC)
                 await save_session.commit()
-            yield stream_event("done")
+            yield stream_event(
+                "done",
+                metrics=(metrics.model_dump() if metrics else None),
+            )
         except OllamaConnectionError as exc:
             yield stream_event("error", detail=str(exc))
 

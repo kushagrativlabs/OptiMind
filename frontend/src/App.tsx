@@ -87,6 +87,24 @@ const MessageText = ({ content }: { content: string }) => {
   )
 }
 
+const formatDuration = (seconds: number) => {
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}m ${Math.round(seconds % 60)}s`
+}
+
+const MessageMetrics = ({ metrics }: { metrics?: ChatMessage['metrics'] }) => {
+  if (!metrics) return null
+  return (
+    <div className="message-metrics" aria-label="Generation performance">
+      {metrics.tokens_per_second != null && (
+        <span>{metrics.tokens_per_second.toFixed(1)} tok/s</span>
+      )}
+      <span>{formatDuration(metrics.duration_seconds)}</span>
+    </div>
+  )
+}
+
 function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('optimind-theme')
@@ -301,6 +319,16 @@ function App() {
                 ]
               }
               return [...current, { role: 'assistant', content: chunk }]
+            })
+          },
+          onMetrics: (metrics) => {
+            setMessages((current) => {
+              const lastMessage = current.at(-1)
+              if (lastMessage?.role !== 'assistant') return current
+              return [
+                ...current.slice(0, -1),
+                { ...lastMessage, metrics },
+              ]
             })
           },
         },
@@ -564,6 +592,7 @@ function App() {
                   </div>
                   <MessageImages images={message.images} />
                   <MessageText content={message.content} />
+                  {message.role === 'assistant' && <MessageMetrics metrics={message.metrics} />}
                 </div>
               </article>
             ))}

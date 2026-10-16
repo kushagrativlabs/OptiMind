@@ -1,11 +1,12 @@
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
 
 from app.core.config import settings
-from app.schemas.chat import ChatMessage, OllamaChatResponse, OllamaModel
+from app.schemas.chat import ChatMessage, GenerationMetrics, OllamaChatResponse, OllamaModel
 from app.services.web_scraper import WebScrapeError, web_scraper
 from app.services.web_search import WebSearchError, web_search_service
 
@@ -18,6 +19,36 @@ class OllamaConnectionError(Exception):
 
 class OllamaModelError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class OllamaStreamEvent:
+    content: str = ""
+    done: bool = False
+    eval_count: int = 0
+    eval_duration: int = 0
+    total_duration: int = 0
+
+
+def generation_metrics(data: dict[str, object]) -> GenerationMetrics | None:
+    total_duration = data.get("total_duration")
+    if not isinstance(total_duration, int) or total_duration < 0:
+        return None
+
+    eval_count = data.get("eval_count")
+    eval_duration = data.get("eval_duration")
+    output_tokens = eval_count if isinstance(eval_count, int) else None
+    tokens_per_second = None
+    if output_tokens is not None and isinstance(eval_duration, int) and eval_duration > 0:
+        tokens_per_second = output_tokens / (eval_duration / 1_000_000_000)
+
+    return GenerationMetrics(
+        duration_seconds=round(total_duration / 1_000_000_000, 2),
+        tokens_per_second=(
+            round(tokens_per_second, 2) if tokens_per_second is not None else None
+        ),
+        output_tokens=output_tokens,
+    )
 
 
 class OllamaService:
@@ -102,12 +133,15 @@ class OllamaService:
         except httpx.HTTPError as exc:
             raise OllamaConnectionError("Ollama did not complete the request.") from exc
 
-        content = response.json().get("message", {}).get("content")
+        response_data = response.json()
+        content = response_data.get("message", {}).get("content")
         if not content:
             raise OllamaConnectionError("Ollama returned an empty response.")
+        metrics = generation_metrics(response_data)
         return OllamaChatResponse(
-            message=ChatMessage(role="assistant", content=content),
+            message=ChatMessage(role="assistant", content=content, metrics=metrics),
             model=model,
+            metrics=metrics,
         )
 
     async def validate_model(
@@ -131,7 +165,7 @@ class OllamaService:
         messages: list[ChatMessage],
         requested_model: str | None = None,
         use_web_search: bool = False,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[OllamaStreamEvent]:
         model = requested_model or self.model
         timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=10.0)
 
@@ -155,9 +189,16 @@ class OllamaService:
                             continue
                         item = json.loads(line)
                         content = item.get("message", {}).get("content", "")
-                        if content:
-                            yield content
-                        if item.get("done"):
+                        done = bool(item.get("done"))
+                        if content or done:
+                            yield OllamaStreamEvent(
+                                content=content,
+                                done=done,
+                                eval_count=item.get("eval_count", 0),
+                                eval_duration=item.get("eval_duration", 0),
+                                total_duration=item.get("total_duration", 0),
+                            )
+                        if done:
                             break
         except httpx.ConnectError as exc:
             raise OllamaConnectionError(

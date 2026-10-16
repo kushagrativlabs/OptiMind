@@ -29,4 +29,5 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)
     images: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    metrics: Mapped[dict[str, float | int] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

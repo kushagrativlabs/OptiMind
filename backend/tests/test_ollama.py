@@ -3,7 +3,22 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.schemas.chat import OllamaModel
-from app.services.ollama import OllamaModelError, OllamaService
+from app.services.ollama import OllamaModelError, OllamaService, generation_metrics
+
+
+def test_generation_metrics_use_ollama_evaluation_duration() -> None:
+    metrics = generation_metrics(
+        {
+            "total_duration": 2_500_000_000,
+            "eval_duration": 2_000_000_000,
+            "eval_count": 20,
+        }
+    )
+
+    assert metrics is not None
+    assert metrics.duration_seconds == 2.5
+    assert metrics.tokens_per_second == 10.0
+    assert metrics.output_tokens == 20
 
 
 @pytest.mark.asyncio
