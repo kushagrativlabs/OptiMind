@@ -1,4 +1,5 @@
 import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,7 +10,7 @@ from app.agents.tools import AgentToolError, ToolResult, agent_tools
 from app.core.config import settings
 from app.schemas.chat import ChatMessage, GenerationMetrics, OllamaChatResponse, OllamaModel
 
-MAX_WEB_CONTEXT_CHARACTERS = 24_000
+MAX_WEB_CONTEXT_CHARACTERS = 30_000
 
 
 class OllamaConnectionError(Exception):
@@ -119,7 +120,7 @@ class OllamaService:
                 ),
                 "stream": False,
                 "keep_alive": settings.ollama_keep_alive,
-                "options": {"num_ctx": settings.ollama_num_ctx},
+                "options": {"num_ctx": settings.ollama_num_ctx, "num_predict": 7_000},
             }
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(f"{self.base_url}/api/chat", json=payload)
@@ -140,12 +141,117 @@ class OllamaService:
         content = response_data.get("message", {}).get("content")
         if not content:
             raise OllamaConnectionError("Ollama returned an empty response.")
+        content = self.with_verified_page_audit(content, tool_results or [])
         metrics = generation_metrics(response_data)
         return OllamaChatResponse(
             message=ChatMessage(role="assistant", content=content, metrics=metrics),
             model=model,
             metrics=metrics,
         )
+
+    @staticmethod
+    def with_verified_page_audit(content: str, results: list[ToolResult]) -> str:
+        """Replace model-written page facts with the crawler's verified records."""
+        crawl = next(
+            (
+                result
+                for result in results
+                if result.sources
+                and any(
+                    "VERIFIED PAGE AUDIT RECORD:" in source.content
+                    for source in result.sources
+                )
+            ),
+            None,
+        )
+        if crawl is None or not crawl.sources:
+            return content
+
+        pages: list[dict[str, str]] = []
+        for source in crawl.sources:
+            record = source.content
+
+            def field(label: str, default: str = "NOT FOUND") -> str:
+                match = re.search(rf"^{re.escape(label)}:\s*(.*)$", record, re.MULTILINE)
+                return (match.group(1).strip() if match else default) or default
+
+            images = field("Images")
+            image_match = re.match(r"(\d+)\s*;\s*missing alt:\s*(\d+)", images)
+            image_count = image_match.group(1) if image_match else "NOT FOUND"
+            missing_alt = image_match.group(2) if image_match else "NOT FOUND"
+            pages.append(
+                {
+                    "url": field("URL", source.url),
+                    "title": field("Title"),
+                    "meta": field("Meta description"),
+                    "canonical": field("Canonical"),
+                    "robots": field("Robots"),
+                    "headings": field("Headings"),
+                    "schema": field("Schema"),
+                    "image_count": image_count,
+                    "missing_alt": missing_alt,
+                    "summary": field("Content summary"),
+                }
+            )
+
+        sections = [
+            "## Page-by-Page Audit",
+            "",
+            "The following page facts are copied from the crawler evidence. Recommendations "
+            "are based only on fields marked NOT FOUND or counts shown here.",
+            "",
+        ]
+        for page in pages:
+            sections.extend(
+                [
+                    f"### Page: {page['url']}",
+                    "**Verified checks**",
+                    f"- Title: {page['title']}",
+                    f"- Meta description: {page['meta']}",
+                    f"- Canonical: {page['canonical']}",
+                    f"- Robots: {page['robots']}",
+                    f"- Headings: {page['headings']}",
+                    f"- Schema: {page['schema']}",
+                    f"- Images: {page['image_count']}; missing alt: {page['missing_alt']}",
+                    f"- Content summary: {page['summary']}",
+                    "**Verified issues**",
+                ]
+            )
+            issues: list[str] = []
+            if page["title"] == "NOT FOUND":
+                issues.append("Title tag is not present in the crawl evidence.")
+            if page["meta"] == "NOT FOUND":
+                issues.append("Meta description is not present in the crawl evidence.")
+            if page["canonical"] == "NOT FOUND":
+                issues.append("Canonical URL is not present in the crawl evidence.")
+            if page["headings"] == "None found":
+                issues.append("No headings were detected in the crawl evidence.")
+            if page["schema"] == "None found":
+                issues.append("No JSON-LD schema types were detected in the crawl evidence.")
+            if page["missing_alt"].isdigit() and int(page["missing_alt"]) > 0:
+                issues.append(f"{page['missing_alt']} image(s) are missing alt text.")
+            sections.extend(f"- {issue}" for issue in (issues or ["No issue was directly verified from the available fields."]))
+            sections.append("**Recommended fixes**")
+            fixes: list[str] = []
+            if page["title"] == "NOT FOUND":
+                fixes.append("Add a descriptive, unique title tag.")
+            if page["meta"] == "NOT FOUND":
+                fixes.append("Add a concise meta description that matches the page intent.")
+            if page["canonical"] == "NOT FOUND":
+                fixes.append("Add a canonical URL when this page is indexable.")
+            if page["headings"] == "None found":
+                fixes.append("Add a clear heading structure beginning with one H1.")
+            if page["schema"] == "None found":
+                fixes.append("Add schema that accurately describes this page type.")
+            if page["missing_alt"].isdigit() and int(page["missing_alt"]) > 0:
+                fixes.append("Add meaningful alt text to the images currently missing it.")
+            sections.extend(f"- {fix}" for fix in (fixes or ["No page-level fix is required from the verified fields alone."]))
+            sections.append("")
+
+        marker = re.search(r"(?im)^#+\s*page[- ]by[- ]page audit\s*$", content)
+        if marker:
+            return content[: marker.start()].rstrip() + "\n\n" + "\n".join(sections)
+        return content.rstrip() + "\n\n" + "\n".join(sections)
 
     async def validate_model(
         self,
@@ -186,7 +292,7 @@ class OllamaService:
                 ),
                 "stream": True,
                 "keep_alive": settings.ollama_keep_alive,
-                "options": {"num_ctx": settings.ollama_num_ctx},
+                "options": {"num_ctx": settings.ollama_num_ctx, "num_predict": 7_000},
             }
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
@@ -294,7 +400,8 @@ class OllamaService:
             "worthiness, topical authority, and quotable content where supported. Cite "
             "supporting sources as Markdown links using their exact URLs. Also include a "
             "page-by-page audit for every crawled page. Do not collapse pages into one "
-            "aggregate. Start every page section with a heading exactly like `Page: "
+            "aggregate. Keep the overview concise and spend the response on the page-by-page audit. "
+            "Start every page section with a heading exactly like `Page: "
             "<full URL>`, then include Checks, Issues, and Recommended fixes subsections. "
             "Use each page URL exactly once, never repeat a heading or recommendation block, "
             "and stop after the last page. Do not write `FINAL ANSWER` inside the report. "
@@ -302,8 +409,13 @@ class OllamaService:
             "in those records and do not summarize the audit down to a sample of pages. "
             "For each page report its URL, title, meta description, canonical, robots, "
             "headings, JSON-LD/schema, image and missing-alt counts, key content, verified "
-            "problems, and recommended fixes. If a field is not in the evidence, write "
+            "problems, and recommended fixes in concise bullet points (do not repeat the "
+            "same issue across sections). If a field is not in the evidence, write "
             "NOT FOUND rather than guessing. "
+            "Never present domain authority, rankings, traffic, mobile performance, "
+            "current AI visibility, or any other measurement as verified unless the "
+            "supplied evidence explicitly contains that measurement; label such items "
+            "as recommendations or limitations instead. "
                 "For audits, report only pages, metadata, headings, images, and JSON-LD "
                 "shown in the supplied evidence. Do not invent pages or claim a tag is "
                 "missing unless the evidence explicitly says NOT FOUND. Clearly separate "

@@ -332,7 +332,7 @@ async def chat_stream(
                         }
                     )
 
-            content = "".join(chunks).strip()
+            content = service.with_verified_page_audit("".join(chunks).strip(), tool_results)
             if not content:
                 raise OllamaConnectionError("Ollama returned an empty response.")
 

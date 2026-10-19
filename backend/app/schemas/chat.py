@@ -48,7 +48,8 @@ class AgentActivity(BaseModel):
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=20_000)
+    # Full website audits can contain verified records for dozens of pages.
+    content: str = Field(min_length=1, max_length=100_000)
     images: list[ChatImage] = Field(default_factory=list, max_length=3)
     metrics: GenerationMetrics | None = None
     activities: list[AgentActivity] = Field(default_factory=list, max_length=20)
