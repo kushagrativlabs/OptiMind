@@ -119,10 +119,7 @@ class OllamaService:
                 ),
                 "stream": False,
                 "keep_alive": settings.ollama_keep_alive,
-                "options": {
-                    "num_ctx": settings.ollama_num_ctx,
-                    "num_predict": settings.ollama_num_predict,
-                },
+                "options": {"num_ctx": settings.ollama_num_ctx},
             }
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(f"{self.base_url}/api/chat", json=payload)
@@ -189,10 +186,7 @@ class OllamaService:
                 ),
                 "stream": True,
                 "keep_alive": settings.ollama_keep_alive,
-                "options": {
-                    "num_ctx": settings.ollama_num_ctx,
-                    "num_predict": settings.ollama_num_predict,
-                },
+                "options": {"num_ctx": settings.ollama_num_ctx},
             }
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
@@ -301,6 +295,8 @@ class OllamaService:
             "page-by-page audit for every crawled page. Do not collapse pages into one "
             "aggregate. Start every page section with a heading exactly like `Page: "
             "<full URL>`, then include Checks, Issues, and Recommended fixes subsections. "
+            "Use each page URL exactly once, never repeat a heading or recommendation block, "
+            "and stop after the last page. Do not write `FINAL ANSWER` inside the report. "
             "For each page report its URL, title, meta description, canonical, robots, "
             "headings, JSON-LD/schema, image and missing-alt counts, key content, verified "
             "problems, and recommended fixes. If a field is not in the evidence, write "
