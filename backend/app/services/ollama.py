@@ -9,7 +9,7 @@ from app.agents.tools import AgentToolError, ToolResult, agent_tools
 from app.core.config import settings
 from app.schemas.chat import ChatMessage, GenerationMetrics, OllamaChatResponse, OllamaModel
 
-MAX_WEB_CONTEXT_CHARACTERS = 8_000
+MAX_WEB_CONTEXT_CHARACTERS = 24_000
 
 
 class OllamaConnectionError(Exception):
@@ -282,7 +282,8 @@ class OllamaService:
             )
         if sources:
             instruction_parts.append(
-            f"Today is {datetime.now(UTC).date().isoformat()}. The source text below may "
+            f"Today is {datetime.now(UTC).date().isoformat()}. Respond in English unless "
+            "the user explicitly requests another language. The source text below may "
             "include user-supplied webpages, internal pages, and current web-search "
             "results. Use it to answer the user's question and for SEO, AEO, and GEO "
             "analysis. For a website audit, provide dedicated Markdown sections named "
@@ -297,6 +298,8 @@ class OllamaService:
             "<full URL>`, then include Checks, Issues, and Recommended fixes subsections. "
             "Use each page URL exactly once, never repeat a heading or recommendation block, "
             "and stop after the last page. Do not write `FINAL ANSWER` inside the report. "
+            "The crawl records are the complete page inventory; include every URL present "
+            "in those records and do not summarize the audit down to a sample of pages. "
             "For each page report its URL, title, meta description, canonical, robots, "
             "headings, JSON-LD/schema, image and missing-alt counts, key content, verified "
             "problems, and recommended fixes. If a field is not in the evidence, write "

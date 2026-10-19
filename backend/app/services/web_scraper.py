@@ -548,7 +548,7 @@ class WebScraper:
                 continue
             page_key = _page_key(page.url)
             duplicate_page = any(_page_key(existing.url) == page_key for existing in pages)
-            if page_key in visited or duplicate_page:
+            if duplicate_page:
                 continue
             visited.add(page_key)
             pages.append(page)

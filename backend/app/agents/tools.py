@@ -66,12 +66,26 @@ class ToolResult(BaseModel):
     detail: str
 
 
-def page_source_content(page: object) -> str:
+def page_source_content(page: object, compact: bool = False) -> str:
     seo = getattr(page, "seo", None)
     if seo is None:
         return getattr(page, "text", "")
     headings = ", ".join(f"{level}: {text}" for level, text in seo.headings) or "None found"
     schemas = ", ".join(seo.schema_types) or "None found"
+    if compact:
+        summary = " ".join(getattr(page, "text", "").split())[:240]
+        return (
+            "VERIFIED PAGE AUDIT RECORD:\n"
+            f"URL: {getattr(page, 'url', 'NOT FOUND')}\n"
+            f"Title: {page.title or 'NOT FOUND'}\n"
+            f"Meta description: {seo.meta_description or 'NOT FOUND'}\n"
+            f"Canonical: {seo.canonical_url or 'NOT FOUND'}\n"
+            f"Robots: {seo.robots or 'NOT FOUND'}\n"
+            f"Headings: {headings}\n"
+            f"Schema: {schemas}\n"
+            f"Images: {seo.image_count}; missing alt: {seo.images_missing_alt}\n"
+            f"Content summary: {summary or 'NOT FOUND'}"
+        )
     return (
         "VERIFIED PAGE SEO EVIDENCE:\n"
         f"Title tag: {page.title or 'NOT FOUND'}\n"
@@ -154,7 +168,11 @@ async def _crawl_website(input_data: BaseModel) -> ToolResult:
     return ToolResult(
         call=ToolCall(id="pending", name="crawl_website", label="Crawl website", arguments={}),
         sources=[
-            ToolSource(url=page.url, title=page.title, content=page_source_content(page))
+            ToolSource(
+                url=page.url,
+                title=page.title,
+                content=page_source_content(page, compact=True),
+            )
             for page in pages
         ],
         detail=(

@@ -2,7 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -189,6 +189,7 @@ async def chat(
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
+    http_request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
     service = OllamaService()
@@ -269,17 +270,23 @@ async def chat_stream(
             "meta", conversation_id=str(conversation_id), model=model
         )
         try:
+            if await http_request.is_disconnected():
+                return
             calls = agent_tools.plan(
                 request.messages,
                 request.web_search,
                 website.url if website else None,
             )
             for call in calls:
+                if await http_request.is_disconnected():
+                    return
                 planned = call.activity("planned")
                 activities.append(planned)
                 yield stream_event("activity", activity=planned.model_dump())
 
             for call in calls:
+                if await http_request.is_disconnected():
+                    return
                 running = call.activity("running")
                 activities = [
                     running if activity.id == call.id else activity
@@ -304,6 +311,8 @@ async def chat_stream(
                 ]
                 yield stream_event("activity", activity=completed.model_dump())
 
+            if await http_request.is_disconnected():
+                return
             async for event in service.chat_stream(
                 request.messages,
                 model,

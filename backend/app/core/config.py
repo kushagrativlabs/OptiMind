@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_keep_alive: str = "30m"
-    ollama_num_ctx: int = 4096
+    ollama_num_ctx: int = 8192
     image_generation_enabled: bool = False
     image_generation_base_url: str = "http://localhost:1234"
     image_generation_model: str = "lcm-ssd-1b-q4"
