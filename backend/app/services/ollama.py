@@ -461,8 +461,8 @@ class OllamaService:
             instruction_parts.append(
                 "ACTIVE WEBSITE PROFILE:\n"
                 f"{website_context}\n"
-                "Keep this website as the project context unless the user explicitly asks "
-                "about another site."
+                "Use this profile only when the user explicitly asks about, audits, or "
+                "references this website. Do not turn unrelated questions into website audits."
             )
         if sources:
             instruction_parts.append(

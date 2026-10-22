@@ -910,6 +910,7 @@ function App() {
           className="new-chat"
           onClick={() => {
             startConversation()
+            setActiveWebsiteId(null)
             setView('conversation')
             setRouteConversationId(null)
             window.history.pushState(null, '', '#conversation')
