@@ -512,6 +512,31 @@ function App() {
     }
   }
 
+  const refreshConnections = async () => {
+    const [statusResult, modelsResult] = await Promise.allSettled([
+      getSystemStatus(),
+      getModels(),
+    ])
+
+    if (statusResult.status === 'fulfilled') {
+      setStatus(statusResult.value)
+      setSelectedModel((current) => {
+        const availableModels = modelsResult.status === 'fulfilled' ? modelsResult.value : []
+        if (availableModels.some((model) => model.name === current)) return current
+        const configured = availableModels.find(
+          (model) => model.name === statusResult.value.ollama.model,
+        )
+        return configured?.name ?? availableModels[0]?.name ?? current
+      })
+    } else {
+      setStatus(null)
+    }
+
+    if (modelsResult.status === 'fulfilled') {
+      setModels(modelsResult.value)
+    }
+  }
+
   const refreshConversations = async () => {
     try {
       setConversations(await getConversations())
@@ -521,31 +546,7 @@ function App() {
   }
 
   useEffect(() => {
-    let active = true
-
-    Promise.all([getSystemStatus(), getModels()])
-      .then(([nextStatus, availableModels]) => {
-        if (!active) return
-
-        setStatus(nextStatus)
-        setModels(availableModels)
-        setSelectedModel((current) => {
-          const isAvailable = availableModels.some((model) => model.name === current)
-          if (isAvailable) return current
-
-          const configured = availableModels.find(
-            (model) => model.name === nextStatus.ollama.model,
-          )
-          return configured?.name ?? availableModels[0]?.name ?? current
-        })
-      })
-      .catch(() => {
-        if (active) setStatus(null)
-      })
-
-    return () => {
-      active = false
-    }
+    void refreshConnections()
   }, [])
 
   useEffect(() => {
@@ -999,7 +1000,7 @@ function App() {
           <StatusPill label="Ollama" service={status?.ollama} />
           <StatusPill label="Image Generator" service={status?.image_generation} />
           <StatusPill label="Web Search" service={status?.web_search} />
-          <button className="refresh-button" onClick={() => void refreshStatus()}>
+          <button className="refresh-button" onClick={() => void refreshConnections()}>
             Refresh connections
           </button>
         </div>

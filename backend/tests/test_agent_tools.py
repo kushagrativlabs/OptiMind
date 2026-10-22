@@ -37,6 +37,15 @@ def test_agent_plan_uses_active_website_without_repeating_url() -> None:
     assert calls[0].arguments == {"url": "https://example.com"}
 
 
+def test_agent_plan_requires_search_for_live_prices() -> None:
+    calls = agent_tools.plan(
+        [ChatMessage(role="user", content="What is the current gold price in India?")],
+        use_web_search=False,
+    )
+
+    assert [call.name for call in calls] == ["web_search"]
+
+
 @pytest.mark.asyncio
 async def test_registry_rejects_unknown_tools() -> None:
     with pytest.raises(AgentToolError, match="Unknown tool"):

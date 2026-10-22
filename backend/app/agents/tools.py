@@ -26,6 +26,14 @@ AUTO_WEB_SEARCH_PATTERN = re.compile(
     r"source|sources|citation|citations|price|pricing|release|version|law|regulation)\b",
     re.IGNORECASE,
 )
+# Queries for live prices, rates, quotes, and market data must never be
+# answered from the local model's memory. They require a successful search.
+LIVE_DATA_PATTERN = re.compile(
+    r"\b(?:price|prices|rate|rates|quote|quotes|market|exchange rate|forex|fuel|"
+    r"petrol|diesel|inflation)\b|\b(?:gold|silver|bitcoin|btc|stock|stocks)\b"
+    r"(?=.*\b(?:current|today|latest|price|rate|quote|market)\b)",
+    re.IGNORECASE,
+)
 NO_WEB_SEARCH_PATTERN = re.compile(
     r"\b(?:do not|don't|dont|without|no)\s+(?:use\s+)?(?:the\s+)?(?:web\s+)?search\b|\boffline\b",
     re.IGNORECASE,
@@ -396,6 +404,10 @@ class AgentTools:
             and not NO_WEB_SEARCH_PATTERN.search(latest_user_message)
             and (
                 use_web_search
+                # Live data is never allowed to fall back to Ollama's memory.
+                # If search is disabled/unavailable, execute() raises a clear
+                # error instead of returning an invented number.
+                or LIVE_DATA_PATTERN.search(latest_user_message)
                 or (
                     settings.web_search_enabled
                     and (
