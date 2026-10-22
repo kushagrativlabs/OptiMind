@@ -18,9 +18,11 @@ class Settings(BaseSettings):
     image_generation_steps: int = 4
     image_generation_cfg_scale: float = 1.0
     image_generation_sampler: str = "lcm"
-    web_search_enabled: bool = False
+    web_search_enabled: bool = True
     searxng_base_url: str = "http://localhost:8080"
     frontend_origin: str = "http://localhost:5173"
+    wordpress_username: str = ""
+    wordpress_app_password: str = ""
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

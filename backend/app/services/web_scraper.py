@@ -71,6 +71,7 @@ class PageSEO:
     schema_types: tuple[str, ...] = ()
     image_count: int = 0
     images_missing_alt: int = 0
+    quality_flags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,9 @@ class WebPage:
     text: str
     links: tuple[str, ...] = ()
     seo: PageSEO | None = None
+    response_time_ms: int | None = None
+    response_bytes: int | None = None
+    lighthouse: dict[str, object] | None = None
 
 
 class ReadableHTMLParser(HTMLParser):
@@ -200,6 +204,14 @@ class ReadableHTMLParser(HTMLParser):
                 continue
 
         canonical_url = urljoin(base_url, self.canonical_href) if self.canonical_href else None
+        h1_count = sum(1 for level, _ in self.headings if level == "h1")
+        quality_flags: list[str] = []
+        if h1_count == 0:
+            quality_flags.append("No H1 heading detected")
+        elif h1_count > 1:
+            quality_flags.append(f"Multiple H1 headings detected ({h1_count})")
+        if re.search(r"_{3,}|\.{3,}|\bplaceholder\b|\bexample phone\b", "".join(self.parts), re.I):
+            quality_flags.append("Possible placeholder text detected")
         return PageSEO(
             meta_description=self.meta_description,
             canonical_url=canonical_url,
@@ -208,6 +220,7 @@ class ReadableHTMLParser(HTMLParser):
             schema_types=tuple(sorted(schema_types)),
             image_count=self.image_count,
             images_missing_alt=self.images_missing_alt,
+            quality_flags=tuple(quality_flags),
         )
 
 
@@ -329,6 +342,7 @@ class WebScraper:
             return cached[1]
 
         url = await validate_public_url(requested_url)
+        request_started = time.perf_counter()
         timeout = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
         headers = {"User-Agent": "OptiMind/0.1 (+local website analysis)"}
 
@@ -385,7 +399,15 @@ class WebScraper:
         if not text:
             raise WebScrapeError("No readable text was found on that webpage.")
 
-        page = WebPage(url=url, title=title or url, text=text, links=links, seo=seo)
+        page = WebPage(
+            url=url,
+            title=title or url,
+            text=text,
+            links=links,
+            seo=seo,
+            response_time_ms=round((time.perf_counter() - request_started) * 1000),
+            response_bytes=len(raw),
+        )
         self._cache[requested_url] = (time.monotonic(), page)
         return page
 

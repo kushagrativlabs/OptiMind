@@ -113,12 +113,18 @@ const normalizeMarkdown = (content: string) => {
   return content
     .replace(/\\([*_`#>~-])/g, '$1')
     .replace(/\\\((.*?)\\\)/g, '($1)')
+    // Some local models emit `+ item` as a list marker. Normalize it to
+    // Markdown's standard bullet marker before rendering or copying.
+    .replace(/^\s*\+\s+(?=\S)/gm, '- ')
 }
 
 const routeFromHash = () => {
   const hash = window.location.hash
   if (hash === '#websites') {
     return { view: 'websites' as const, conversationId: null }
+  }
+  if (hash === '#audits') {
+    return { view: 'audits' as const, conversationId: null }
   }
 
   const match = hash.match(/^#chat\/([^/]+)$/)
@@ -147,6 +153,57 @@ const MessageText = ({ content }: { content: string }) => {
     </div>
   )
 }
+
+const AuditsPage = ({
+  audits,
+  websites,
+  onOpen,
+}: {
+  audits: ConversationSummary[]
+  websites: Website[]
+  onOpen: (id: string) => void
+}) => (
+  <section className="audits-page">
+    <header className="audits-header">
+      <div>
+        <p className="eyebrow">REPORT LIBRARY</p>
+        <h1>Website audits</h1>
+        <p>Saved SEO, AEO, GEO, indexability, and Lighthouse reports.</p>
+      </div>
+      <div className="audit-count">{audits.length} report{audits.length === 1 ? '' : 's'}</div>
+    </header>
+    {audits.length === 0 ? (
+      <div className="audit-empty">
+        <span>⌁</span>
+        <h2>No audits yet</h2>
+        <p>Open a website workspace and run a full audit to create your first report.</p>
+      </div>
+    ) : (
+      <div className="audit-grid">
+        {audits.map((audit) => {
+          const website = websites.find((item) => item.id === audit.website_id)
+          return (
+            <article className="audit-card" key={audit.id}>
+              <div className="audit-card-top">
+                <span className="audit-icon">⌁</span>
+                <span className="audit-status">Saved report</span>
+              </div>
+              <h2>{audit.title}</h2>
+              <p className="audit-website">{website?.name ?? 'Website workspace'}</p>
+              <div className="audit-meta">
+                <span>{new Date(audit.updated_at).toLocaleDateString()}</span>
+                <span>{audit.model}</span>
+              </div>
+              <button className="primary" onClick={() => onOpen(audit.id)} type="button">
+                Open report <span aria-hidden="true">→</span>
+              </button>
+            </article>
+          )
+        })}
+      </div>
+    )}
+  </section>
+)
 
 const formatDuration = (seconds: number) => {
   if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
@@ -209,25 +266,47 @@ const downloadConversationPdf = (
       { text: `${message.role === 'assistant' ? 'OptiMind' : 'You'}:`, kind: 'label' },
     ]
     let tableStarted = false
-    lines.forEach((line, index) => {
+    const sectionHeadings = /^(Full Report|SEO Report|AEO Report|GEO Report|Page-by-Page Audit|Verified findings:?|Impact:|Prioritized recommendations:?|Exact changes to make:?|Verified checks|Verified issues|Recommended fixes)$/i
+  const pageField = /^[-*+•]?\s*(Title|Meta description|Meta Description|Canonical|Robots|Headings|Schema|Images|Key content|Content summary):\s*(.*)$/i
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]
       const isTableLine = /^\s*\|.*\|\s*$/.test(line)
       const isSeparator = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line)
       if (isTableLine && !isSeparator) {
         const cells = tableCells(line)
         result.push({ text: '', cells, kind: tableStarted ? 'tableRow' : 'tableHeader' })
         tableStarted = true
-        return
+        continue
       }
-      if (isSeparator && tableStarted) return
+      if (isSeparator && tableStarted) continue
       tableStarted = false
       const heading = line.match(/^#{1,3}\s+(.+)/)?.[1]
       const cleanedHeading = heading ? pdfText(heading).replace(/^[^A-Za-z0-9]+/, '') : null
-      result.push(...wrap(cleanedHeading ?? pdfText(line)).map((text) => ({
+      const plainLine = pdfText(line).trim()
+      const pageMatch = plainLine.match(/^Page:\s*(.+)$/i)
+      if (pageMatch) {
+        result.push({ text: `Page: ${pageMatch[1]}`, kind: 'heading' })
+        const rows: string[][] = []
+        while (index + 1 < lines.length) {
+          const next = pdfText(lines[index + 1]).trim()
+          const field = next.match(pageField)
+          if (!field) break
+          rows.push([field[1], field[2] || 'Not found'])
+          index += 1
+        }
+        if (rows.length) {
+          result.push({ text: '', cells: ['Verified field', 'Value'], kind: 'tableHeader' })
+          rows.forEach((cells) => result.push({ text: '', cells, kind: 'tableRow' }))
+        }
+        continue
+      }
+      const inferredHeading = Boolean(heading) || sectionHeadings.test(plainLine)
+      result.push(...wrap(cleanedHeading ?? plainLine).map((text) => ({
         text,
-        kind: heading ? 'heading' as const : 'body' as const,
+        kind: inferredHeading ? 'heading' as const : 'body' as const,
       })))
       if (index < lines.length - 1 && line.trim() === '') result.push({ text: '', kind: 'body' })
-    })
+    }
     result.push({ text: '', kind: 'body' })
     return result
   }
@@ -243,9 +322,24 @@ const downloadConversationPdf = (
     { text: '', kind: 'body' },
     ...auditMessages.flatMap(messageLines),
   ]
-  const pageLines = Array.from({ length: Math.ceil(contentLines.length / 30) }, (_, index) =>
-    contentLines.slice(index * 30, (index + 1) * 30),
-  )
+  // Build pages from the actual rendered height instead of a fixed line count.
+  // This keeps tables and wrapped paragraphs from running into the footer.
+  const pageLines: ReportLine[][] = []
+  let currentPage: ReportLine[] = []
+  let remaining = 650
+  contentLines.forEach((line) => {
+    const height = line.cells
+      ? (line.kind === 'tableHeader' ? 30 : 42)
+      : line.kind === 'title' ? 38 : line.kind === 'heading' ? 24 : line.kind === 'meta' ? 17 : 16
+    if (currentPage.length && remaining < height) {
+      pageLines.push(currentPage)
+      currentPage = []
+      remaining = 650
+    }
+    currentPage.push(line)
+    remaining -= height
+  })
+  if (currentPage.length) pageLines.push(currentPage)
   const objects: string[] = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '',
@@ -258,18 +352,18 @@ const downloadConversationPdf = (
     pageObjectIds.push(objects.length + 1)
     objects.push('')
     contentObjectIds.push(objects.length + 1)
-    let currentY = 744
+    let currentY = pageIndex === 0 ? 708 : 744
     const textCommands = lines.map((line) => {
       if (line.cells) {
         const columnWidth = 516 / line.cells.length
-        const rowHeight = line.kind === 'tableHeader' ? 24 : 34
+        const rowHeight = line.kind === 'tableHeader' ? 30 : 42
         const top = currentY + 4
-        const fill = line.kind === 'tableHeader' ? '0.86 0.93 0.89 rg' : '0.97 0.98 0.97 rg'
+        const fill = line.kind === 'tableHeader' ? '0.80 0.91 0.85 rg' : '0.96 0.98 0.97 rg'
         const cells = line.cells.map((cell, cellIndex) => {
           const x = 48 + cellIndex * columnWidth
           const text = wrap(cell, 24).slice(0, 2)
           const cellText = text.map((value, textIndex) =>
-            `0.12 0.16 0.15 rg BT /F${line.kind === 'tableHeader' ? '2' : '1'} 8 Tf ${x + 5} ${top - 13 - textIndex * 9} Td (${value.replace(/[\\()]/g, '\\$&')}) Tj ET`,
+            `0.12 0.16 0.15 rg BT /F${line.kind === 'tableHeader' ? '2' : '1'} 8 Tf ${x + 6} ${top - 13 - textIndex * 9} Td (${value.replace(/[\\()]/g, '\\$&')}) Tj ET`,
           ).join('\n')
           return `${fill}\n${x} ${top - rowHeight} ${columnWidth} ${rowHeight} re f\n0.78 0.84 0.80 RG 0.5 w ${x} ${top - rowHeight} ${columnWidth} ${rowHeight} re S\n${cellText}`
         }).join('\n')
@@ -277,16 +371,17 @@ const downloadConversationPdf = (
         return cells
       }
       const font = line.kind === 'title' || line.kind === 'heading' || line.kind === 'label' ? 'F2' : 'F1'
-      const size = line.kind === 'title' ? 20 : line.kind === 'heading' ? 12 : 10
-      const color = line.kind === 'heading' ? '0.18 0.42 0.34 rg' : '0.12 0.16 0.15 rg'
+      const size = line.kind === 'title' ? 22 : line.kind === 'heading' ? 13 : line.kind === 'meta' ? 9 : 10
+      const color = line.kind === 'title' ? '0.10 0.30 0.23 rg' : line.kind === 'heading' ? '0.18 0.42 0.34 rg' : '0.12 0.16 0.15 rg'
       const command = `${color}\nBT\n/${font} ${size} Tf\n48 ${currentY} Td\n(${line.text.replace(/[\\()]/g, '\\$&')}) Tj\nET`
-      currentY -= line.kind === 'title' ? 26 : 14
+      currentY -= line.kind === 'title' ? 32 : line.kind === 'heading' ? 22 : line.kind === 'meta' ? 15 : 14
       return command
     }).join('\n')
     const stream = [
       'q',
       '0.12 0.34 0.27 rg',
       '0 770 612 22 re f',
+      pageIndex === 0 ? '0.86 0.94 0.89 rg 36 674 540 58 re f' : '',
       'Q',
       textCommands,
       '0.45 0.50 0.47 rg BT /F1 8 Tf 48 28 Td',
@@ -368,7 +463,7 @@ const ActivityLog = ({
 
 function App() {
   const initialRoute = routeFromHash()
-  const [view, setView] = useState<'conversation' | 'websites'>(initialRoute.view)
+  const [view, setView] = useState<'conversation' | 'websites' | 'audits'>(initialRoute.view)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('optimind-theme')
     if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
@@ -393,8 +488,6 @@ function App() {
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeActivities, setActiveActivities] = useState<AgentActivity[]>([])
-  const [webSearch, setWebSearch] = useState(false)
-  const [imageMode, setImageMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -409,6 +502,7 @@ function App() {
   const visibleConversations = activeWebsiteId
     ? conversations.filter((conversation) => conversation.website_id === activeWebsiteId)
     : conversations
+  const audits = conversations.filter((conversation) => conversation.website_id !== null)
 
   const refreshStatus = async () => {
     try {
@@ -435,9 +529,6 @@ function App() {
 
         setStatus(nextStatus)
         setModels(availableModels)
-        if (nextStatus.web_search.status !== 'online') {
-          setWebSearch(false)
-        }
         setSelectedModel((current) => {
           const isAvailable = availableModels.some((model) => model.name === current)
           if (isAvailable) return current
@@ -589,6 +680,15 @@ function App() {
     event.preventDefault()
     const content = draft.trim() || (attachedImages.length > 0 ? 'Analyze the attached image.' : '')
     if (!content || isSending) return
+    const hasAttachedImages = attachedImages.length > 0
+    const imageGenerationIntent = /\b(?:generate|create|draw|make|design|render)\b[\s\S]*\b(?:image|picture|illustration|logo|poster|icon)\b/i.test(content)
+    const shouldGenerateImage = !hasAttachedImages && imageGenerationIntent
+    const webSearchIntent = /\b(?:latest|current|news|search|google|competitor|trend|research|source|citation)\b/i.test(content)
+    const shouldSearchWeb = status?.web_search.status === 'online' && webSearchIntent
+    const visionModel = models.find((model) => model.capabilities.includes('vision'))
+    const requestModel = hasAttachedImages && !supportsVision
+      ? visionModel?.name ?? selectedModel
+      : selectedModel
 
     const nextMessages = [
       ...messages,
@@ -606,10 +706,10 @@ function App() {
     activeRequestRef.current = controller
 
     try {
-      if (imageMode) {
+      if (shouldGenerateImage) {
         const result = await generateImage(
           content,
-          selectedModel,
+          requestModel,
           conversationId,
           activeWebsiteId,
           controller.signal,
@@ -621,9 +721,9 @@ function App() {
       }
       await streamChat(
         nextMessages.slice(1),
-        selectedModel,
+        requestModel,
         conversationId,
-        webSearch,
+        shouldSearchWeb,
         activeWebsiteId,
         {
           onConversation: (nextConversationId) => {
@@ -729,7 +829,6 @@ function App() {
   const openWebsiteWorkspace = (website: Website) => {
     setActiveWebsiteId(website.id)
     setSelectedModel(website.model)
-    setImageMode(false)
     startConversation()
     setDraft(
       `Review ${website.url}. Summarize its main pages, verify its content and SEO/AEO/GEO issues, ` +
@@ -843,8 +942,17 @@ function App() {
           >
             <span>◇</span> Websites <small>{websites.length}</small>
           </a>
-          <a className="nav-item disabled" href="#audits" aria-disabled="true">
-            <span>⌁</span> Audits <small>Phase 4</small>
+          <a
+            className={`nav-item ${view === 'audits' ? 'active' : ''}`}
+            href="#audits"
+            onClick={(event) => {
+              event.preventDefault()
+              setError(null)
+              setView('audits')
+              window.history.pushState(null, '', '#audits')
+            }}
+          >
+            <span>⌁</span> Audits <small>{audits.length}</small>
           </a>
         </nav>
 
@@ -907,6 +1015,8 @@ function App() {
             onOpen={openWebsiteWorkspace}
             websites={websites}
           />
+        ) : view === 'audits' ? (
+          <AuditsPage audits={audits} onOpen={(id) => void openConversation(id)} websites={websites} />
         ) : (
         <>
         <header className="topbar">
@@ -947,49 +1057,6 @@ function App() {
               <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
               <strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
             </button>
-            <button
-              aria-pressed={imageMode}
-              className={`image-mode-toggle ${imageMode ? 'active' : ''}`}
-              disabled={status?.image_generation.status !== 'online' || isSending}
-              onClick={() => {
-                setImageMode((current) => {
-                  const next = !current
-                  if (next) {
-                    setWebSearch(false)
-                    setAttachedImages([])
-                  }
-                  return next
-                })
-              }}
-              title={status?.image_generation.detail ?? 'Checking image generator'}
-              type="button"
-            >
-              <span aria-hidden="true">✦</span>
-              <strong>Image</strong>
-              <small>{imageMode ? 'On' : 'Off'}</small>
-            </button>
-            <label
-              className={`web-search-toggle ${webSearch ? 'active' : ''}`}
-              title={status?.web_search.detail ?? 'Checking web search'}
-            >
-              <input
-                aria-label="Toggle web search"
-                checked={webSearch}
-                disabled={status?.web_search.status !== 'online' || isSending}
-                onChange={(event) => {
-                  setWebSearch(event.target.checked)
-                  if (event.target.checked) setImageMode(false)
-                }}
-                role="switch"
-                type="checkbox"
-              />
-              <span className={`status-dot ${status?.web_search.status ?? 'checking'}`} />
-              <span className="web-search-label">Web search</span>
-              <span className="toggle-track" aria-hidden="true">
-                <span className="toggle-thumb" />
-              </span>
-              <strong className="web-search-state">{webSearch ? 'On' : 'Off'}</strong>
-            </label>
             <label className="model-picker">
               <span className={`status-dot ${status?.ollama.status ?? 'checking'}`} />
               <span className="model-label">Model</span>
@@ -1097,11 +1164,9 @@ function App() {
               <button
                 aria-label="Attach images"
                 className="attach-button"
-                disabled={imageMode || isSending || attachedImages.length >= MAX_IMAGES}
+                disabled={isSending || attachedImages.length >= MAX_IMAGES}
                 onClick={openImagePicker}
-                title={imageMode
-                  ? 'Turn off Image mode to analyze an uploaded image'
-                  : supportsVision
+                title={supportsVision
                   ? 'Attach up to 3 images'
                   : 'Select a vision-capable model to attach images'}
                 type="button"
@@ -1118,9 +1183,7 @@ function App() {
                     event.currentTarget.form?.requestSubmit()
                   }
                 }}
-                placeholder={imageMode
-                  ? 'Describe the image you want to create…'
-                  : 'Ask OptiMind about a website…'}
+                placeholder="Ask OptiMind anything…"
                 ref={composerRef}
                 rows={1}
                 value={draft}
@@ -1141,12 +1204,8 @@ function App() {
             </form>
             <p className="composer-note">
               {attachedImages.length > 0
-                ? `Image attached · ${selectedModel} is ready to process it`
-                : imageMode
-                  ? 'Image mode on · Generated locally and saved in this chat'
-                : webSearch
-                  ? 'Web search on · Current sources will be cited'
-                  : 'Local-first · Web search off'}
+                ? `Image attached · OptiMind will review it automatically`
+                : 'OptiMind automatically chooses chat, web search, image review, or image generation'}
             </p>
           </div>
         </section>

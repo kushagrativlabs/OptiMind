@@ -190,6 +190,11 @@ class OllamaService:
                     "schema": field("Schema"),
                     "image_count": image_count,
                     "missing_alt": missing_alt,
+                    "quality_flags": field("Quality flags", "None detected"),
+                    "response_time": field("Observed response time", "NOT MEASURED"),
+                    "response_size": field("Response size", "NOT MEASURED"),
+                    "lighthouse": field("Lighthouse performance", "NOT MEASURED"),
+                    "web_vitals": field("Core Web Vitals", "NOT MEASURED"),
                     "summary": field("Content summary"),
                 }
             )
@@ -201,10 +206,44 @@ class OllamaService:
             "are based only on fields marked NOT FOUND or counts shown here.",
             "",
         ]
+        page_scores: list[int] = []
         for page in pages:
+            # Keep scoring deterministic and evidence-based. Missing or explicitly
+            # flagged fields reduce the score; no model judgment is involved.
+            score = 100
+            if page["title"] == "NOT FOUND":
+                score -= 20
+            if page["meta"] == "NOT FOUND":
+                score -= 20
+            if page["canonical"] == "NOT FOUND":
+                score -= 10
+            if page["headings"] == "None found":
+                score -= 15
+            if page["schema"] == "None found":
+                score -= 15
+            if page["quality_flags"] != "None detected":
+                score -= min(10, 5 * len([flag for flag in page["quality_flags"].split(",") if flag.strip()]))
+            if page["missing_alt"].isdigit() and int(page["missing_alt"]) > 0:
+                score -= min(10, int(page["missing_alt"]))
+            score = max(0, score)
+            page_scores.append(score)
+            robots_value = page["robots"].lower()
+            if "noindex" in robots_value:
+                indexability = "Blocked: robots directive contains noindex"
+            elif page["robots"] == "NOT FOUND":
+                indexability = "Potentially indexable; no page-level robots directive found"
+            else:
+                indexability = "Appears indexable from the page-level robots directive"
             sections.extend(
                 [
                     f"### Page: {page['url']}",
+                    f"**Page score: {score}/100**",
+                    f"- Indexability: {indexability}",
+                    "- Google index status: Not verifiable without Google Search Console data",
+                    f"- Observed response time: {page['response_time']}",
+                    f"- Response size: {page['response_size']}",
+                    f"- Lighthouse scores: {page['lighthouse']}",
+                    f"- Core Web Vitals: {page['web_vitals']}",
                     "**Verified checks**",
                     f"- Title: {page['title']}",
                     f"- Meta description: {page['meta']}",
@@ -213,40 +252,79 @@ class OllamaService:
                     f"- Headings: {page['headings']}",
                     f"- Schema: {page['schema']}",
                     f"- Images: {page['image_count']}; missing alt: {page['missing_alt']}",
+                    f"- Quality flags: {page['quality_flags']}",
                     f"- Content summary: {page['summary']}",
-                    "**Verified issues**",
+                    "**Issues and recommendations**",
                 ]
             )
-            issues: list[str] = []
+            issues: list[tuple[str, str, str, str]] = []
             if page["title"] == "NOT FOUND":
-                issues.append("Title tag is not present in the crawl evidence.")
+                issues.append((
+                    "Title tag", page["title"],
+                    "A title tag was not present in the crawl evidence.",
+                    "Add a descriptive, unique title that matches the page intent.",
+                ))
             if page["meta"] == "NOT FOUND":
-                issues.append("Meta description is not present in the crawl evidence.")
+                issues.append((
+                    "Meta description", page["meta"],
+                    "A meta description was not present in the crawl evidence.",
+                    "Write a unique description of about 150–160 characters that explains the page value and primary service.",
+                ))
             if page["canonical"] == "NOT FOUND":
-                issues.append("Canonical URL is not present in the crawl evidence.")
+                issues.append((
+                    "Canonical URL", page["canonical"],
+                    "A canonical URL was not present in the crawl evidence.",
+                    "Add a self-referencing canonical URL when the page should be indexable.",
+                ))
+            if "noindex" in page["robots"].lower():
+                issues.append((
+                    "Google indexability", page["robots"],
+                    "This page explicitly asks search engines not to index it.",
+                    "Remove noindex only if this page should appear in Google search results.",
+                ))
             if page["headings"] == "None found":
-                issues.append("No headings were detected in the crawl evidence.")
+                issues.append((
+                    "Heading structure", page["headings"],
+                    "No headings were detected in the crawl evidence.",
+                    "Add one clear H1 followed by descriptive H2/H3 sections.",
+                ))
             if page["schema"] == "None found":
-                issues.append("No JSON-LD schema types were detected in the crawl evidence.")
+                issues.append((
+                    "Structured data", page["schema"],
+                    "No JSON-LD schema types were detected in the crawl evidence.",
+                    "Add schema that accurately describes this page, such as Organization, LocalBusiness, Service, FAQPage, or Article.",
+                ))
+            if page["quality_flags"] != "None detected":
+                issues.extend(
+                    ("Content quality", "Flagged", flag.strip() + ".", "Review and correct the flagged content.")
+                    for flag in page["quality_flags"].split(",")
+                    if flag.strip()
+                )
             if page["missing_alt"].isdigit() and int(page["missing_alt"]) > 0:
-                issues.append(f"{page['missing_alt']} image(s) are missing alt text.")
-            sections.extend(f"- {issue}" for issue in (issues or ["No issue was directly verified from the available fields."]))
-            sections.append("**Recommended fixes**")
-            fixes: list[str] = []
-            if page["title"] == "NOT FOUND":
-                fixes.append("Add a descriptive, unique title tag.")
-            if page["meta"] == "NOT FOUND":
-                fixes.append("Add a concise meta description that matches the page intent.")
-            if page["canonical"] == "NOT FOUND":
-                fixes.append("Add a canonical URL when this page is indexable.")
-            if page["headings"] == "None found":
-                fixes.append("Add a clear heading structure beginning with one H1.")
-            if page["schema"] == "None found":
-                fixes.append("Add schema that accurately describes this page type.")
-            if page["missing_alt"].isdigit() and int(page["missing_alt"]) > 0:
-                fixes.append("Add meaningful alt text to the images currently missing it.")
-            sections.extend(f"- {fix}" for fix in (fixes or ["No page-level fix is required from the verified fields alone."]))
+                issues.append((
+                    "Image alt text", f"{page['missing_alt']} image(s) missing alt text",
+                    "Some images do not have accessible alternative text.",
+                    "Add concise, descriptive alt text to each affected image.",
+                ))
+            if not issues:
+                sections.append("- No issue was directly verified from the available fields.")
+            else:
+                for label, current, issue, suggested in issues:
+                    sections.extend([
+                        f"- **{label}**",
+                        f"  - Current: {current}",
+                        f"  - Issue: {issue}",
+                        f"  - Suggested: {suggested}",
+                    ])
             sections.append("")
+
+        if page_scores:
+            overall_score = round(sum(page_scores) / len(page_scores))
+            sections.insert(
+                4,
+                f"**Overall verified score: {overall_score}/100** "
+                f"(average across {len(page_scores)} audited page{'s' if len(page_scores) != 1 else ''})",
+            )
 
         marker = re.search(r"(?im)^#+\s*page[- ]by[- ]page audit\s*$", content)
         if marker:
@@ -391,8 +469,20 @@ class OllamaService:
             f"Today is {datetime.now(UTC).date().isoformat()}. Respond in English unless "
             "the user explicitly requests another language. The source text below may "
             "include user-supplied webpages, internal pages, and current web-search "
-            "results. Use it to answer the user's question and for SEO, AEO, and GEO "
-            "analysis. For a website audit, provide dedicated Markdown sections named "
+            "results. Use it to answer the user's question. Only produce an SEO, AEO, "
+            "or GEO report when the user explicitly asks to audit, review, crawl, scan, "
+            "or analyze a website. For ordinary questions, including news and factual "
+            "searches, answer directly and do not turn the response into an SEO report. "
+            "For news, public-figure, death, accident, crime, health, legal, or other "
+            "high-stakes claims, use only facts explicitly stated in the supplied source "
+            "content. Do not infer, combine, or invent dates, ages, locations, causes, "
+            "quotes, police actions, hospital details, funerals, or confirmations. "
+            "Never claim that a fact is verified, confirmed, current, or reported unless "
+            "a supplied source directly supports it. If sources are missing, weak, stale, "
+            "or conflicting, say that the claim could not be verified and provide the exact "
+            "source links for the user to check. Do not treat Wikipedia snippets or search "
+            "result summaries as proof of a breaking event. "
+            "For a website audit, provide dedicated Markdown sections named "
             "SEO Report, AEO Report, and GEO Report. In each section distinguish verified "
             "findings, impact, and prioritized recommendations. AEO must cover answer "
             "readiness, question-focused content, facts, FAQs, and schema where supported. "
@@ -408,12 +498,12 @@ class OllamaService:
             "The crawl records are the complete page inventory; include every URL present "
             "in those records and do not summarize the audit down to a sample of pages. "
             "For each page report its URL, title, meta description, canonical, robots, "
-            "headings, JSON-LD/schema, image and missing-alt counts, key content, verified "
+            "indexability, Google index status, headings, JSON-LD/schema, image and missing-alt counts, key content, verified "
             "problems, and recommended fixes in concise bullet points (do not repeat the "
             "same issue across sections). If a field is not in the evidence, write "
             "NOT FOUND rather than guessing. "
             "Never present domain authority, rankings, traffic, mobile performance, "
-            "current AI visibility, or any other measurement as verified unless the "
+            "Google indexing status, current AI visibility, or any other measurement as verified unless the "
             "supplied evidence explicitly contains that measurement; label such items "
             "as recommendations or limitations instead. "
                 "For audits, report only pages, metadata, headings, images, and JSON-LD "

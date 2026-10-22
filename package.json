@@ -4,7 +4,8 @@
   "private": true,
   "description": "Local-first AI workspace for website growth",
   "scripts": {
-    "setup": "npm run install:frontend && npm run install:backend && npm run postgres:setup && npm run ollama:setup && npm run web-search:setup && npm run db:create && npm run db:migrate",
+    "setup": "npm run install:root && npm run install:frontend && npm run install:backend && npm run lighthouse:setup && npm run postgres:setup && npm run ollama:setup && npm run ollama:configure && npm run image:setup && npm run web-search:setup && npm run db:create && npm run db:migrate",
+    "install:root": "npm install",
     "start": "bash scripts/start-all.sh",
     "services:start": "npm start",
     "install:frontend": "npm install --prefix frontend",
@@ -15,6 +16,7 @@
     "ollama:models": "ollama list",
     "image:setup": "bash scripts/setup-image-generation.sh",
     "image:start": "bash scripts/start-image-generation.sh",
+    "lighthouse:setup": "npx playwright install chromium",
     "web-search:setup": "bash scripts/setup-searxng.sh",
     "postgres:setup": "bash scripts/setup-postgres.sh",
     "db:create": "bash scripts/create-database.sh",
@@ -30,6 +32,9 @@
   "engines": {
     "node": ">=22",
     "npm": ">=10"
+  },
+  "devDependencies": {
+    "lighthouse": "^12.8.2",
+    "playwright": "^1.64.1"
   }
 }
-

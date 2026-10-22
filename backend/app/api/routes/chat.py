@@ -27,6 +27,7 @@ def stream_event(event_type: str, **data: object) -> str:
 async def execute_tools(
     request: ChatRequest,
     active_website_url: str | None = None,
+    active_wordpress_api_url: str | None = None,
 ) -> tuple[list[ToolResult], list[AgentActivity]]:
     results: list[ToolResult] = []
     activities: list[AgentActivity] = []
@@ -34,6 +35,7 @@ async def execute_tools(
         request.messages,
         request.web_search,
         active_website_url,
+        active_wordpress_api_url,
     ):
         try:
             result = await agent_tools.execute(call)
@@ -140,6 +142,7 @@ async def chat(
         tool_results, activities = await execute_tools(
             request,
             website.url if website else None,
+            website.wordpress_api_url if website else None,
         )
         response = await service.chat(
             request.messages,
@@ -276,6 +279,7 @@ async def chat_stream(
                 request.messages,
                 request.web_search,
                 website.url if website else None,
+                website.wordpress_api_url if website else None,
             )
             for call in calls:
                 if await http_request.is_disconnected():

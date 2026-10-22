@@ -8,6 +8,7 @@ __pycache__/
 *.egg-info/
 *.tsbuildinfo
 frontend/node_modules/
+node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/vite.config.js

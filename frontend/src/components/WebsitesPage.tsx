@@ -112,7 +112,7 @@ export const WebsitesPage = ({
       <section className="website-create-card">
         <div>
           <h2>Add a website</h2>
-          <p>OptiMind stores the public URLs now. Credentials are added later with encryption.</p>
+          <p>OptiMind discovers the WordPress REST API automatically. Any Application Password stays on the backend.</p>
         </div>
         <form onSubmit={addWebsite}>
           <label>

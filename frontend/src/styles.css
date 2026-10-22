@@ -1231,6 +1231,33 @@ h1 {
 
 .website-card-actions button.danger { color: #97473e; }
 
+.audits-page { padding: 42px clamp(24px, 5vw, 72px); max-width: 1180px; margin: 0 auto; }
+.audits-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.audits-header h1 { margin: 4px 0 8px; font-family: 'Manrope', sans-serif; font-size: clamp(28px, 4vw, 42px); }
+.audits-header p:not(.eyebrow) { margin: 0; color: #6c7a70; }
+.audit-count { padding: 10px 14px; border: 1px solid #d8e1d4; border-radius: 999px; color: #5b7650; background: #f5f8f2; font-weight: 700; white-space: nowrap; }
+.audit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
+.audit-card { padding: 20px; border: 1px solid #d9e3d6; border-radius: 18px; background: #fff; box-shadow: 0 12px 30px rgba(35, 57, 40, .07); }
+.audit-card-top { display: flex; align-items: center; justify-content: space-between; }
+.audit-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: #fff; background: #9fcf42; font-size: 22px; }
+.audit-status { color: #62815a; font-size: 12px; font-weight: 700; }
+.audit-card h2 { margin: 18px 0 5px; font-size: 17px; }
+.audit-website { margin: 0; color: #6a7b6d; }
+.audit-meta { display: flex; justify-content: space-between; gap: 12px; margin: 18px 0; color: #7b887e; font-size: 12px; }
+.audit-card .primary { width: 100%; justify-content: space-between; }
+.audit-empty { padding: 72px 24px; text-align: center; border: 1px dashed #cbd8c6; border-radius: 20px; background: rgba(255,255,255,.55); }
+.audit-empty > span { color: #94b84e; font-size: 40px; }
+.audit-empty h2 { margin: 12px 0 6px; }
+.audit-empty p { margin: 0; color: #718075; }
+
+:root[data-theme='dark'] .audit-card { background: #17221b; border-color: #34483a; box-shadow: none; }
+:root[data-theme='dark'] .audit-count { background: #1c2b21; border-color: #38513d; color: #b5d68a; }
+:root[data-theme='dark'] .audits-header p:not(.eyebrow),
+:root[data-theme='dark'] .audit-website,
+:root[data-theme='dark'] .audit-meta,
+:root[data-theme='dark'] .audit-empty p { color: #a7b7aa; }
+:root[data-theme='dark'] .audit-empty { border-color: #3c5542; background: #17221b; }
+
 :root[data-theme='dark'] .main {
   background:
     linear-gradient(rgba(16, 23, 19, 0.88), rgba(16, 23, 19, 0.88)),
