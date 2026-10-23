@@ -37,6 +37,30 @@ OptiMind is a local-first AI colleague for managing and improving WordPress webs
 
 6. Open <http://localhost:5173>.
 
+### Admin-managed users
+
+User creation is admin-only. Set `ADMIN_EMAIL` and a strong `ADMIN_PASSWORD` in
+`.env` before the first start. After migrations run, OptiMind creates that
+account once; changing the environment password later does not overwrite it.
+
+Sign in through the API at `POST /api/v1/auth/login` with:
+
+```json
+{"email":"admin@example.com","password":"your-12-character-password"}
+```
+
+Use the returned bearer token to create a member through
+`POST /api/v1/users`:
+
+```json
+{"email":"person@example.com","full_name":"Team Member","password":"another-12-character-password"}
+```
+
+Only an authenticated user with the `admin` role can list or create users.
+There is intentionally no public signup endpoint. The existing chat and
+website endpoints remain compatible while the frontend login and route-level
+workspace permissions are added in the next access-control slice.
+
 After the initial setup, start PostgreSQL, Ollama, the API, and the frontend with:
 
 ```sh

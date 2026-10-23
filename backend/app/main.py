@@ -6,10 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import dispose_engine
+from app.services.auth import ensure_initial_admin
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await ensure_initial_admin()
     yield
     await dispose_engine()
 

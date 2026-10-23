@@ -68,6 +68,9 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       IMAGE_GENERATION_ENABLED: ${IMAGE_GENERATION_ENABLED:-false}
       FRONTEND_ORIGIN: http://localhost:5173
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      AUTH_TOKEN_TTL_MINUTES: ${AUTH_TOKEN_TTL_MINUTES:-480}
     depends_on:
       postgres:
         condition: service_healthy

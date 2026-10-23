@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
     wordpress_username: str = ""
     wordpress_app_password: str = ""
+    admin_email: str = ""
+    admin_password: str = ""
+    auth_token_ttl_minutes: int = 480
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
