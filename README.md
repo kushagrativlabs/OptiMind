@@ -43,6 +43,68 @@ After the initial setup, start PostgreSQL, Ollama, the API, and the frontend wit
 npm start
 ```
 
+### Ubuntu with Docker (recommended)
+
+For the full Ubuntu installation, automatic startup, static-IP access, and an
+internal office hostname, see [docs/ubuntu-docker-setup.md](docs/ubuntu-docker-setup.md).
+
+This runs the complete core stack in containers: PostgreSQL, Ollama, SearXNG,
+the FastAPI backend, and the Vite frontend. Docker Compose creates the database
+tables automatically when the backend starts. Image generation remains disabled
+by default because its CPU/GPU runtime is hardware-specific; enable it later
+with a separate image-generation service if needed.
+
+Install Docker Engine and the Compose plugin on Ubuntu, then run:
+
+```sh
+git clone <your-repository-url> optimind
+cd optimind
+cp .env.docker.example .env
+chmod 600 .env
+docker compose up -d --build
+docker compose logs -f backend
+```
+
+Open <http://localhost:5173>. The first start downloads the configured Ollama
+model and can take several minutes. Check the services with:
+
+```sh
+docker compose ps
+curl http://localhost:8000/api/v1/status
+```
+
+#### Access from another computer using the Ubuntu static IP
+
+The frontend is published on all host interfaces, so use the Ubuntu machine's
+static/private IP from another device on the same network:
+
+```sh
+hostname -I
+# Example: http://192.168.1.50:5173
+```
+
+Open `http://YOUR_UBUNTU_IP:5173` in the other computer's browser. If UFW is
+enabled, allow only your private network to reach the frontend:
+
+```sh
+sudo ufw allow from 192.168.1.0/24 to any port 5173 proto tcp
+sudo ufw status
+```
+
+Replace `192.168.1.0/24` with your actual LAN range. Do not expose port 8000,
+5432, 8080, or Ollama's port to the public internet. For access outside your
+LAN, use a VPN or a reverse proxy with HTTPS and authentication rather than
+forwarding the development server directly.
+
+To stop the project without deleting data:
+
+```sh
+docker compose down
+```
+
+To remove the database and Ollama model volumes as well, use
+`docker compose down -v`. This permanently deletes those local Docker volumes.
+
 ### Run two chats at the same time
 
 OptiMind defaults to two parallel Ollama requests, which is suitable for a

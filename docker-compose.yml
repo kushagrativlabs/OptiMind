@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-optimind}
+      POSTGRES_USER: ${POSTGRES_USER:-optimind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-optimind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-optimind} -d ${POSTGRES_DB:-optimind}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  ollama-model:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["until ollama list >/dev/null 2>&1; do sleep 2; done; ollama pull $$OLLAMA_MODEL"]
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: "no"
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-optimind-local-search}
+    volumes:
+      - ./infrastructure/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-optimind}:${POSTGRES_PASSWORD:-optimind}@postgres:5432/${POSTGRES_DB:-optimind}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-12288}
+      WEB_SEARCH_ENABLED: ${WEB_SEARCH_ENABLED:-true}
+      SEARXNG_BASE_URL: http://searxng:8080
+      IMAGE_GENERATION_ENABLED: ${IMAGE_GENERATION_ENABLED:-false}
+      FRONTEND_ORIGIN: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama-model:
+        condition: service_completed_successfully
+      searxng:
+        condition: service_healthy
+    command: ["/bin/sh", "-c", "cd /app/backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
+  ollama_data:
