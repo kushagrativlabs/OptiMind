@@ -1,0 +1,21 @@
+Welcome to OptiMind, a private AI workspace for turning website data into clear growth actions.
+
+Everything starts in one focused workspace. OptiMind runs locally with Ollama, so your conversations and website information stay under your control.
+
+In the Websites area, each client site gets its own workspace. You can connect a public website, configure the WordPress REST API when available, choose the right local model, and keep the work organized from the beginning.
+
+Now we move to the conversation view. Instead of opening several tools, your team can ask one simple question and receive a useful answer in plain language. OptiMind can use the local model for everyday reasoning and automatically bring in web search when current information is required.
+
+This is a live Tivlabs homepage snapshot with a clear auditor overview: the target, scope, completion status, and exact evidence collected. The assistant explains what was verified, what still needs a full crawl, and how to improve SEO, answer-engine visibility, and generative-search visibility with practical steps a client can understand.
+
+The website workspace is where the research becomes measurable. The live snapshot checks titles, descriptions, headings, canonical URLs, robots directives, structured data, images, and indexability signals, while clearly marking page-speed and full-site findings as not measured.
+
+The report is designed to answer three questions: what is wrong, why it matters, and what should be fixed first. Page-speed measurements and other limitations are clearly labeled instead of being guessed.
+
+The demo then moves into a live chat turn. A user types a question, OptiMind streams its response in the conversation, and the input remains available for the next question just like a modern chat assistant.
+
+From there, the team can move from findings to action. Every website, model, conversation, and recommendation stays in one place, making follow-up work easier and more consistent.
+
+When the review is complete, OptiMind produces a professional report that can be shared with the client. The result is a repeatable process: discover, understand, prioritize, improve, and report.
+
+OptiMind gives teams a practical way to combine private local AI with website intelligence, without losing control of their data or their workflow.

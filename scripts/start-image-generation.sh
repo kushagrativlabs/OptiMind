@@ -14,8 +14,8 @@ fi
 runtime_dir="${IMAGE_GENERATION_RUNTIME_DIR:-${project_root}/.local/stable-diffusion.cpp}"
 models_dir="${IMAGE_GENERATION_MODELS_DIR:-${project_root}/.local/image-models}"
 server_bin="${runtime_dir}/build/bin/sd-server"
-model_path="${models_dir}/lcm-ssd-1b.q4_k.gguf"
-vae_path="${models_dir}/sdxl_vae.safetensors"
+model_path="${IMAGE_GENERATION_MODEL_PATH:-${models_dir}/lcm-ssd-1b.q4_k.gguf}"
+vae_path="${IMAGE_GENERATION_VAE_PATH:-${models_dir}/sdxl_vae.safetensors}"
 listen_port="${IMAGE_GENERATION_PORT:-1234}"
 generation_backend="${IMAGE_GENERATION_BACKEND:-cpu}"
 

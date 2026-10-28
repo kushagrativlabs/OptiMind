@@ -1,0 +1,5 @@
+This is a fresh OptiMind image-generation conversation.
+
+The user asks for a photorealistic wooden cabin in a snowy pine forest at blue hour, with warm window light and soft falling snow.
+
+The generated image appears directly in the chat, where it can be reviewed and downloaded.

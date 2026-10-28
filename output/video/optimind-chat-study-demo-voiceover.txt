@@ -1,0 +1,1 @@
+This demo shows a study-help conversation. The user asks for a beginner-friendly explanation, then turns it into three quiz questions.

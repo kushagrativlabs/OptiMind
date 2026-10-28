@@ -1,0 +1,9 @@
+Welcome to OptiMind’s local image generation experience.
+
+This demo starts a fresh conversation and asks for a photorealistic real-world scene: a fluffy orange cat sitting by a sunlit window in a warm home interior.
+
+The prompt is entered naturally in the same chat. OptiMind recognizes the image request, sends it to the local image generator, and shows the result when it is ready.
+
+The finished image appears directly in the conversation, with a download option so it can be saved and shared.
+
+This keeps image creation simple: describe the idea, wait for the local render, and continue the conversation when you are ready.

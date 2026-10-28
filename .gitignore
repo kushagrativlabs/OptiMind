@@ -17,4 +17,5 @@ frontend/vite.config.d.ts
 
 # The global Git configuration ignores index.html; Vite requires this entry file.
 !frontend/index.html
-
+*.mp4
+*.webm

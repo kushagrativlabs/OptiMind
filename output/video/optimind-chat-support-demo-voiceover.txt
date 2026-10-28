@@ -1,0 +1,1 @@
+This demo shows a customer-support conversation. The user drafts a polite delay response, then asks for a shorter and more empathetic version.

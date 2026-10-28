@@ -1,0 +1,5 @@
+This is a different real-world image-generation example.
+
+The user describes a glassy mountain lake at sunrise, with pine-forest reflections, soft golden light, and cinematic photography.
+
+The local image generator creates the landscape inside the chat, where the finished image can be reviewed and downloaded.

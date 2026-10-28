@@ -1,0 +1,9 @@
+Welcome to OptiMind, a private local AI workspace.
+
+This is a simple chat interaction with two everyday use cases. First, the user asks a practical JavaScript coding question and receives a live response from the local model.
+
+The conversation stays focused and natural. The user then switches to an everyday question about a relaxed Sunday morning routine without leaving the chat.
+
+OptiMind keeps the composer ready for the next message, shows the assistant response as it arrives, and keeps the workflow in one clean workspace.
+
+That is the core experience: private local AI, live conversation, and practical answers without unnecessary steps.

@@ -1,0 +1,5 @@
+This is a product-photo image-generation example.
+
+The user describes a matte black wireless headphone on a white studio table, with softbox lighting and a premium advertising style.
+
+The local image generator creates the product visual inside the chat, where it can be reviewed and downloaded.

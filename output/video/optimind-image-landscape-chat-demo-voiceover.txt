@@ -1,0 +1,5 @@
+This is a live OptiMind image conversation.
+
+The user asks for a photorealistic mountain lake at sunrise with pine reflections and cinematic light.
+
+The finished generated image appears directly in the chat, where the user can review it and download it for later use.

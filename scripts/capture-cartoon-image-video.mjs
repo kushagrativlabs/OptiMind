@@ -1,0 +1,46 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { chromium } from 'playwright'
+
+const root = path.resolve(decodeURIComponent(new URL('.', import.meta.url).pathname), '..')
+const outputDir = path.join(root, 'output', 'video')
+const tempDir = path.join(root, 'tmp', 'cartoon-image-video')
+const demoName = process.env.IMAGE_DEMO_NAME || 'optimind-cartoon-image-demo'
+const imagePrompt = process.env.IMAGE_PROMPT || 'Create a photorealistic real-world image of a fluffy orange cat sitting by a sunlit window, natural fur detail, warm home interior, cinematic photography.'
+const outputPath = path.join(outputDir, `${demoName}.webm`)
+
+await fs.mkdir(outputDir, { recursive: true })
+await fs.rm(tempDir, { recursive: true, force: true })
+await fs.mkdir(tempDir, { recursive: true })
+
+const browser = await chromium.launch({ headless: true })
+const context = await browser.newContext({
+  viewport: { width: 1920, height: 1080 },
+  deviceScaleFactor: 1,
+  recordVideo: { dir: tempDir, size: { width: 1920, height: 1080 } },
+})
+await context.addInitScript(() => localStorage.setItem('optimind-theme', 'dark'))
+const page = await context.newPage()
+
+await page.goto('http://127.0.0.1:5173/#conversation', { waitUntil: 'networkidle' })
+await page.waitForTimeout(5_000)
+await page.locator('button.new-chat').click()
+await page.waitForTimeout(2_000)
+
+const composer = page.locator('.composer textarea[aria-label="Message OptiMind"]')
+await composer.click()
+await composer.pressSequentially(imagePrompt, { delay: 28 })
+await composer.press('Enter')
+await page.waitForFunction(
+  () => document.querySelectorAll('.message-images img').length >= 1,
+  undefined,
+  { timeout: 120_000 },
+)
+await page.waitForTimeout(20_000)
+
+await context.close()
+await browser.close()
+const recorded = (await fs.readdir(tempDir)).find((file) => file.endsWith('.webm'))
+if (!recorded) throw new Error('Playwright did not produce a video recording.')
+await fs.copyFile(path.join(tempDir, recorded), outputPath)
+console.log(outputPath)

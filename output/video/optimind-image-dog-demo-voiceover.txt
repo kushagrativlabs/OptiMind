@@ -1,0 +1,5 @@
+This is a second real-world image-generation example.
+
+The user describes a photorealistic golden retriever running on a quiet beach at sunrise, with natural light and cinematic photography.
+
+OptiMind sends the prompt to the local image generator and displays the finished image directly in the conversation, ready to download.
