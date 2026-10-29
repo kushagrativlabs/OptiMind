@@ -4,7 +4,6 @@ from time import perf_counter
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_session
 from app.models import Conversation, Message, Website
 from app.schemas.chat import ChatMessage, GenerationMetrics
@@ -82,7 +81,7 @@ async def generate_image(
             Message(
                 conversation_id=conversation.id,
                 role="assistant",
-                content=f"Generated locally with {settings.image_generation_model}.",
+                content=f"Generated locally with {image_generation_service.profile['model']}.",
                 images=[image.model_dump()],
                 metrics=metrics.model_dump(),
             ),
@@ -92,10 +91,10 @@ async def generate_image(
     return ImageGenerationResponse(
         message=ChatMessage(
             role="assistant",
-            content=f"Generated locally with {settings.image_generation_model}.",
+            content=f"Generated locally with {image_generation_service.profile['model']}.",
             images=[image],
             metrics=metrics,
         ),
         conversation_id=conversation.id,
-        model=settings.image_generation_model,
+        model=image_generation_service.profile["model"],
     )

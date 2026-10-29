@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     ollama_num_ctx: int = 12288
     image_generation_enabled: bool = False
     image_generation_base_url: str = "http://localhost:1234"
+    image_generation_diffusers_base_url: str = "http://localhost:1235"
+    image_generation_mlx_base_url: str = "http://localhost:1236"
+    image_generation_profile: str = "fast"
     image_generation_model: str = "lcm-ssd-1b-q4"
     image_generation_size: str = "512x512"
     image_generation_steps: int = 4

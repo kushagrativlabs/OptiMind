@@ -195,6 +195,41 @@ white-image numerical failures seen with some Metal/Q4 combinations. Keep the
 LCM model at four steps unless you intentionally test different sampling
 settings. Image generation is substantially slower than chat on CPU-only systems.
 
+#### Image model profiles
+
+OptiMind supports one active image model at a time. This keeps memory usage safe
+on 8 GB Apple Silicon systems. Select a profile before starting the image worker:
+
+```sh
+# Fast default (LCM-SSD 1B Q4, Metal, 4 steps)
+npm run image:start:fast
+
+# Experimental Stable Diffusion 1.5 Q4 profile (Metal, 12 steps)
+npm run image:start:sd15
+
+# Any compatible stable-diffusion.cpp model (set paths in .env first)
+npm run image:start:custom
+```
+
+For any other compatible model, set `IMAGE_GENERATION_PROFILE=custom`,
+`IMAGE_GENERATION_MODEL_PATH`, `IMAGE_GENERATION_VAE_PATH`,
+`IMAGE_GENERATION_STEPS`, `IMAGE_GENERATION_CFG_SCALE`, and
+`IMAGE_GENERATION_SAMPLER` in `.env`. Stop the current image worker before
+switching profiles; do not load multiple models simultaneously on an 8 GB Mac.
+
+The `diffusers` and `mlx` profiles use separate OpenAI-compatible workers:
+`IMAGE_GENERATION_DIFFUSERS_BASE_URL` defaults to port 1235 and
+`IMAGE_GENERATION_MLX_BASE_URL` defaults to port 1236. Those workers are not
+bundled with this repository; install the backend and model weights separately,
+then set the matching profile in `.env`. OptiMind reports the profile offline
+until its `/v1/models` endpoint responds.
+
+Install the optional runtimes with:
+
+```sh
+npm run image:install-backends
+```
+
 `DATABASE_URL` is required at runtime and must be provided in the root `.env`.
 Database credentials are not hardcoded in the Python or Alembic configuration.
 

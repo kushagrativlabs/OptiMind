@@ -8,6 +8,7 @@ import httpx
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.core.config import settings
+from app.core.image_profiles import get_image_profile
 from app.schemas.chat import ChatImage
 
 
@@ -143,6 +144,27 @@ class ImageGenerationService:
         self.enabled = settings.image_generation_enabled if enabled is None else enabled
         self.transport = transport
 
+    @property
+    def profile(self):
+        profile = get_image_profile(settings.image_generation_profile)
+        if settings.image_generation_profile != "custom":
+            return profile
+        return {
+            **profile,
+            "model": settings.image_generation_model,
+            "steps": settings.image_generation_steps,
+            "cfg_scale": settings.image_generation_cfg_scale,
+            "sampler": settings.image_generation_sampler,
+        }
+
+    @property
+    def active_base_url(self) -> str:
+        if settings.image_generation_profile == "diffusers":
+            return settings.image_generation_diffusers_base_url.rstrip("/")
+        if settings.image_generation_profile == "mlx":
+            return settings.image_generation_mlx_base_url.rstrip("/")
+        return self.base_url
+
     async def status(self) -> dict[str, str]:
         if not self.enabled:
             return {
@@ -154,7 +176,7 @@ class ImageGenerationService:
                 timeout=3.0,
                 transport=self.transport,
             ) as client:
-                response = await client.get(f"{self.base_url}/v1/models")
+                response = await client.get(f"{self.active_base_url}/v1/models")
                 response.raise_for_status()
         except (httpx.HTTPError, OSError):
             return {
@@ -163,7 +185,7 @@ class ImageGenerationService:
             }
         return {
             "status": "online",
-            "detail": f"{settings.image_generation_model} is ready",
+            "detail": f"{self.profile['model']} ({settings.image_generation_profile}) is ready",
         }
 
     async def generate(self, prompt: str) -> ChatImage:
@@ -187,9 +209,9 @@ class ImageGenerationService:
         extra_args = {
             "negative_prompt": negative_prompt,
             "sample_params": {
-                "sample_steps": settings.image_generation_steps,
-                "sample_method": settings.image_generation_sampler,
-                "guidance": {"txt_cfg": settings.image_generation_cfg_scale},
+                "sample_steps": self.profile["steps"],
+                "sample_method": self.profile["sampler"],
+                "guidance": {"txt_cfg": self.profile["cfg_scale"]},
             },
         }
         enhanced_prompt = (
@@ -204,7 +226,7 @@ class ImageGenerationService:
                 transport=self.transport,
             ) as client:
                 response = await client.post(
-                    f"{self.base_url}/v1/images/generations",
+                    f"{self.active_base_url}/v1/images/generations",
                     json={
                         "prompt": enhanced_prompt,
                         "n": 1,

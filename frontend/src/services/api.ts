@@ -11,6 +11,16 @@ export type SystemStatus = {
   web_search: ServiceState
 }
 
+export type ImageProfile = {
+  label: string
+  model: string
+  steps: number
+  cfg_scale: number
+  sampler: string
+  recommended: boolean
+  note: string
+}
+
 export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
@@ -89,6 +99,11 @@ const request = async <T>(path: string, options?: RequestInit): Promise<T> => {
 }
 
 export const getSystemStatus = () => request<SystemStatus>('/api/v1/status')
+
+export const getImageProfiles = () =>
+  request<{ active: string; profiles: Record<string, ImageProfile> }>(
+    '/api/v1/image-profiles',
+  )
 
 export const getModels = () => request<OllamaModel[]>('/api/v1/models')
 
